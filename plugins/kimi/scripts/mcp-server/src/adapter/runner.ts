@@ -20,6 +20,9 @@ export const STDERR_CAP_BYTES = 1 * 1024 * 1024;
 
 export interface RunKimiInvocation extends KimiInvocation {
   timeoutSeconds: number;
+  /** Working directory for the spawned kimi process. Used by kimi_implement to
+   *  pin cwd to a disposable worktree (P0-C step 8). */
+  cwd?: string;
 }
 
 export interface PathConstraints {
@@ -93,6 +96,7 @@ export async function runKimi(
     command: ctx.binary ?? "kimi",
     argv,
     env,
+    cwd: inv.cwd,
     timeoutMs: inv.timeoutSeconds * 1000,
     stdoutCapBytes: STDOUT_CAP_BYTES,
     stderrCapBytes: STDERR_CAP_BYTES,

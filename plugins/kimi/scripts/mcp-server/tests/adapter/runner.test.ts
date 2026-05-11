@@ -117,6 +117,23 @@ describe("runKimi — text mode", () => {
 
     expect(calls[0]!.command).toBe("/opt/kimi/bin/kimi");
   });
+
+  it("forwards inv.cwd as the subprocess cwd (for kimi_implement worktree)", async () => {
+    const { fn, calls } = fakeSubprocess({ stdout: "" });
+
+    await runKimi(
+      {
+        prompt: "x",
+        outputFormat: "text",
+        finalMessageOnly: true,
+        timeoutSeconds: 1,
+        cwd: "/some/abs/worktree",
+      },
+      baseCtx({ _runSubprocess: fn }),
+    );
+
+    expect(calls[0]!.cwd).toBe("/some/abs/worktree");
+  });
 });
 
 describe("runKimi — stream-json mode", () => {
