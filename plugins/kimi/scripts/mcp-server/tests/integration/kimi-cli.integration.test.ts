@@ -65,6 +65,32 @@ describe.skipIf(!RUN_INTEGRATION)("kimi CLI integration (opt-in)", () => {
   );
 
   it(
+    "kimi_query with output_format='stream-json' returns parseable raw_events",
+    async () => {
+      const out = await runKimiQuery(
+        {
+          prompt: "Reply with exactly the word 'streamed'.",
+          timeout_seconds: 120,
+          output_format: "stream-json",
+        },
+        ctx(),
+      );
+
+      expect(out.isError, JSON.stringify(out)).toBeFalsy();
+      const sc = out.structuredContent as Record<string, unknown>;
+      expect(Array.isArray(sc.raw_events)).toBe(true);
+      const events = sc.raw_events as Array<{ role?: string; content?: unknown }>;
+      expect(events.length).toBeGreaterThan(0);
+      // At least one assistant event should be present.
+      expect(events.some((e) => e.role === "assistant")).toBe(true);
+      // Trailing session marker still extracted from stderr.
+      expect(typeof sc.session_id).toBe("string");
+      expect(sc.session_id as string).toMatch(UUID_RE);
+    },
+    INTEGRATION_TIMEOUT_MS,
+  );
+
+  it(
     "kimi_resume reuses the session_id returned by kimi_query",
     async () => {
       const first = await runKimiQuery(
