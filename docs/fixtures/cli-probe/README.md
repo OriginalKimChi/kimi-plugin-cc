@@ -24,17 +24,17 @@ Captured to lock in what `kimi` CLI 1.41.0 looks like *before* any plugin code i
 
 ## Key behaviour findings (locked-in contract for the MCP adapter)
 
-1. **Invocation shape**: `kimi [OPTIONS] [<prompt-arg>]` — interactive by default; non-interactive with `--print` or `--quiet`. `--quiet` is an alias for `--print --output-format text --final-message-only`.
+1. **Invocation shape**: `kimi [OPTIONS] COMMAND [ARGS]` — interactive by default; non-interactive with `--print` or `--quiet`. `--quiet` is an alias for `--print --output-format text --final-message-only`.
 
-2. **stdin or arg prompt**: prompt can be passed as the final positional arg OR piped via stdin. Both work in `--print` mode.
+2. **Prompt MUST go through `--prompt <value>`** (or `-p` / `-c`), NOT as a positional. ~~Original probe note (#2 below) claimed the prompt could be the final positional arg — **that was wrong**; a positional triggers `No such command "<prompt>"`. Corrected 2026-05-11 after live integration against the real binary.~~ stdin pipe-in is still valid when `--print --input-format=text` is combined.
 
 3. **`--output-format`**: `text` (default, plain assistant message) or `stream-json` (one JSON object per line — observed: `{"role":"assistant","content":"..."}`).
 
-4. **Trailing session marker on stdout**: every non-interactive invocation ends with a non-JSON line:
+4. **Trailing session marker — STDERR in `--quiet` mode**: `kimi --quiet` writes the assistant's final message to **stdout** but the line
    ```
    To resume this session: kimi -r <UUID>
    ```
-   This is NOT part of the JSON stream. The adapter must split it off before parsing.
+   to **stderr**. ~~Original probe note claimed stdout — **wrong**; corrected 2026-05-11.~~ The adapter therefore searches both stdout and stderr (stdout first) when extracting the session ID.
 
 5. **Session ID format**: UUID v4 — `[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`. Our `session_id` regex `^[A-Za-z0-9_-]+$` accepts this.
 

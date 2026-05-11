@@ -3225,8 +3225,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path5) {
-      let input = path5;
+    function removeDotSegments(path6) {
+      let input = path6;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3478,8 +3478,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path5, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path5 && path5 !== "/" ? path5 : void 0;
+        const [path6, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path6 && path6 !== "/" ? path6 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -7363,8 +7363,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path5, errorMaps, issueData } = params;
-  const fullPath = [...path5, ...issueData.path || []];
+  const { data, path: path6, errorMaps, issueData } = params;
+  const fullPath = [...path6, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7480,11 +7480,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path5, key) {
+  constructor(parent, value, path6, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path5;
+    this._path = path6;
     this._key = key;
   }
   get path() {
@@ -11122,10 +11122,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path5) {
-  if (!path5)
+function getElementAtPath(obj, path6) {
+  if (!path6)
     return obj;
-  return path5.reduce((acc, key) => acc?.[key], obj);
+  return path6.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11445,11 +11445,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path5, issues) {
+function prefixIssues(path6, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path5);
+    iss.path.unshift(path6);
     return iss;
   });
 }
@@ -18308,6 +18308,26 @@ function isEphemeral(p) {
   return EPHEMERAL_ROOTS.some((r) => p.startsWith(r));
 }
 
+// src/adapter/drift-counter.ts
+var DRIFT_THRESHOLD = 3;
+var RECENT_KINDS_CAP = 10;
+var _count = 0;
+var _recent = [];
+function recordDriftEvent(kind) {
+  _count += 1;
+  _recent.push(kind);
+  if (_recent.length > RECENT_KINDS_CAP) {
+    _recent = _recent.slice(-RECENT_KINDS_CAP);
+  }
+}
+function getDriftState() {
+  return {
+    count: _count,
+    active: _count >= DRIFT_THRESHOLD,
+    recentKinds: [..._recent]
+  };
+}
+
 // src/adapter/parser-stream-json.ts
 var SESSION_LINE = /^[ \t]*To resume this session: kimi -r ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[ \t\r]*$/;
 function parseStreamJsonStdout(stdout) {
@@ -18590,21 +18610,28 @@ async function runKimi(inv, ctx) {
   if (inv.outputFormat === "text") {
     const parsed2 = parseTextStdout(sub.stdout);
     const sessionId2 = parsed2.sessionId ?? extractSessionId(sub.stderr);
+    const trailingMarkerMissing2 = sessionId2 === null;
+    if (trailingMarkerMissing2) recordDriftEvent("missing_trailing_marker");
     return {
       ...common,
       sessionId: sessionId2,
       finalMessage: redactSecrets(scrubControlChars(parsed2.finalMessage), secrets),
-      trailingMarkerMissing: sessionId2 === null
+      trailingMarkerMissing: trailingMarkerMissing2
     };
   }
   const parsed = parseStreamJsonStdout(sub.stdout);
   const sessionId = parsed.sessionId ?? extractSessionId(sub.stderr);
+  const trailingMarkerMissing = sessionId === null;
+  if (parsed.events.length === 0 && sub.exitCode === 0) {
+    recordDriftEvent("stream_json_malformed");
+  }
+  if (trailingMarkerMissing) recordDriftEvent("missing_trailing_marker");
   return {
     ...common,
     sessionId,
     finalMessage: redactSecrets(scrubControlChars(parsed.finalMessage), secrets),
     rawEvents: parsed.events,
-    trailingMarkerMissing: sessionId === null
+    trailingMarkerMissing
   };
 }
 function collectSecrets(env) {
@@ -18614,6 +18641,49 @@ function collectSecrets(env) {
     if (typeof v === "string" && v.length > 0) out.push(v);
   }
   return out;
+}
+
+// src/adapter/temp-config.ts
+var import_node_crypto = require("node:crypto");
+var import_node_fs3 = require("node:fs");
+var import_node_os = __toESM(require("node:os"), 1);
+var import_node_path4 = __toESM(require("node:path"), 1);
+var TEMP_CONFIG_PREFIX = "kimi-plugin-";
+var NUL2 = String.fromCharCode(0);
+function writeTempConfig(opts) {
+  const { apiKey, source } = opts;
+  if (typeof apiKey !== "string" || apiKey.length === 0) {
+    throw new Error("temp-config: apiKey must be a non-empty string");
+  }
+  if (apiKey.includes(NUL2) || apiKey.includes("\n") || apiKey.includes("\r")) {
+    throw new Error("temp-config: apiKey must not contain NUL or newline characters");
+  }
+  if (apiKey.includes('"') || apiKey.includes("\\")) {
+    throw new Error(`temp-config: apiKey must not contain '"' or '\\\\'`);
+  }
+  const filePath = import_node_path4.default.join(
+    import_node_os.default.tmpdir(),
+    `${TEMP_CONFIG_PREFIX}${(0, import_node_crypto.randomBytes)(12).toString("hex")}.toml`
+  );
+  const stanza = source === "moonshot" ? '[providers."moonshot"]' : '[providers."managed:kimi-code"]';
+  const content = `${stanza}
+api_key = "${apiKey}"
+`;
+  (0, import_node_fs3.writeFileSync)(filePath, content, { mode: 384 });
+  let cleaned = false;
+  return {
+    filePath,
+    cleanup: async () => {
+      if (cleaned) return { removed: false };
+      cleaned = true;
+      try {
+        await import_node_fs3.promises.unlink(filePath);
+        return { removed: true };
+      } catch {
+        return { removed: false };
+      }
+    }
+  };
 }
 
 // src/adapter/run-safe.ts
@@ -18631,22 +18701,53 @@ async function runKimiSafe(inv, ctx, opts = {}) {
     };
   }
   const secrets = collectSecrets2(ctx.parentEnv);
-  const plannedArgv = planArgv(inv);
-  let result;
-  try {
-    result = await runKimi(inv, ctx);
-  } catch (err) {
-    return { ok: false, error: toKimiError(err, plannedArgv, secrets) };
+  let tempConfig = null;
+  let effectiveInv = inv;
+  let effectiveCtx = ctx;
+  if (auth.state === "env" && auth.source !== null) {
+    const apiKey = auth.source === "moonshot" ? ctx.parentEnv.MOONSHOT_API_KEY : ctx.parentEnv.KIMI_CODE_API_KEY;
+    if (typeof apiKey === "string" && apiKey.length > 0) {
+      try {
+        tempConfig = writeTempConfig({ apiKey, source: auth.source });
+      } catch (err) {
+        return {
+          ok: false,
+          error: new KimiError(
+            "auth_missing",
+            `cannot inject API key: ${err instanceof Error ? err.message : String(err)}`,
+            emptyDetails()
+          )
+        };
+      }
+      effectiveInv = { ...inv, configFile: tempConfig.filePath };
+      effectiveCtx = {
+        ...ctx,
+        // Our temp config lives under os.tmpdir() (ephemeral). Allow it through
+        // path-validator without loosening the user's other path constraints.
+        pathConstraints: { ...ctx.pathConstraints ?? {}, allowEphemeral: true }
+      };
+    }
   }
-  const classifyCtx = {
-    argv: plannedArgv,
-    secrets,
-    outputFormat: inv.outputFormat,
-    authFailurePatterns: opts.authFailurePatterns
-  };
-  const classified = classifyKimiResult(result, classifyCtx);
-  if (classified !== null) return { ok: false, error: classified };
-  return { ok: true, result };
+  const plannedArgv = planArgv(effectiveInv);
+  try {
+    let result;
+    try {
+      result = await runKimi(effectiveInv, effectiveCtx);
+    } catch (err) {
+      return { ok: false, error: toKimiError(err, plannedArgv, secrets) };
+    }
+    const classifyCtx = {
+      argv: plannedArgv,
+      secrets,
+      outputFormat: inv.outputFormat,
+      authFailurePatterns: opts.authFailurePatterns
+    };
+    const classified = classifyKimiResult(result, classifyCtx);
+    if (classified !== null) return { ok: false, error: classified };
+    return { ok: true, result };
+  } finally {
+    if (tempConfig) await tempConfig.cleanup();
+  }
 }
 function planArgv(inv) {
   try {
@@ -18707,16 +18808,20 @@ function errorEnvelope(code, message, details) {
   };
 }
 function textResultEnvelope(r) {
+  const structuredContent = {
+    session_id: r.sessionId,
+    exit_code: r.exitCode,
+    duration_ms: r.durationMs,
+    stdout_bytes: r.stdoutBytes,
+    stderr_bytes: r.stderrBytes,
+    trailing_marker_missing: r.trailingMarkerMissing
+  };
+  if (r.rawEvents !== void 0) {
+    structuredContent.raw_events = r.rawEvents;
+  }
   return {
     content: [{ type: "text", text: r.finalMessage }],
-    structuredContent: {
-      session_id: r.sessionId,
-      exit_code: r.exitCode,
-      duration_ms: r.durationMs,
-      stdout_bytes: r.stdoutBytes,
-      stderr_bytes: r.stderrBytes,
-      trailing_marker_missing: r.trailingMarkerMissing
-    }
+    structuredContent
   };
 }
 
@@ -18795,9 +18900,9 @@ async function executeGit(opts) {
 }
 
 // src/adapter/worktree-guard.ts
-var import_node_crypto = require("node:crypto");
-var import_node_fs3 = require("node:fs");
-var import_node_path4 = __toESM(require("node:path"), 1);
+var import_node_crypto2 = require("node:crypto");
+var import_node_fs4 = require("node:fs");
+var import_node_path5 = __toESM(require("node:path"), 1);
 
 // src/adapter/worktree-list.ts
 function parseWorktreeList(stdout) {
@@ -18961,14 +19066,14 @@ async function prepareCreateWorktree(opts) {
       { field: "worktree_path" }
     );
   }
-  if (!import_node_path4.default.isAbsolute(wtPath)) {
+  if (!import_node_path5.default.isAbsolute(wtPath)) {
     throw new WorktreeValidationError(
       "path_validation",
       "worktree_path must be an absolute path",
       { field: "worktree_path" }
     );
   }
-  if ((0, import_node_fs3.existsSync)(wtPath)) {
+  if ((0, import_node_fs4.existsSync)(wtPath)) {
     throw new WorktreeValidationError(
       "worktree_already_exists",
       `worktree_path already exists: ${wtPath}`,
@@ -19079,12 +19184,12 @@ async function runCleanup(gitExec, baseRepo, worktreePath) {
   }
 }
 function generateBranchName(baseRef) {
-  const sha7 = (0, import_node_crypto.createHash)("sha1").update(baseRef).digest("hex").slice(0, 7);
+  const sha7 = (0, import_node_crypto2.createHash)("sha1").update(baseRef).digest("hex").slice(0, 7);
   return `kimi-impl-${sha7}-${Date.now()}`;
 }
 function isSubpath(child, parent) {
   if (child === parent) return true;
-  const parentWithSep = parent.endsWith(import_node_path4.default.sep) ? parent : parent + import_node_path4.default.sep;
+  const parentWithSep = parent.endsWith(import_node_path5.default.sep) ? parent : parent + import_node_path5.default.sep;
   return child.startsWith(parentWithSep);
 }
 function toWorktreeValidationError(err, field) {
@@ -19273,7 +19378,8 @@ var KimiQueryInputSchema = external_exports.object({
   add_dirs: external_exports.array(external_exports.string()).max(10).optional(),
   max_steps_per_turn: external_exports.number().int().positive().max(100).optional(),
   timeout_seconds: external_exports.number().int().positive().max(QUERY_MAX_TIMEOUT_SECONDS).optional(),
-  session_id: external_exports.string().uuid().optional()
+  session_id: external_exports.string().uuid().optional(),
+  output_format: external_exports.enum(["text", "stream-json"]).optional()
 }).strict();
 async function runKimiQuery(rawInput, ctx) {
   const parsed = KimiQueryInputSchema.safeParse(rawInput);
@@ -19290,11 +19396,13 @@ async function runKimiQuery(rawInput, ctx) {
     pathConstraints: ctx.pathConstraints,
     _runSubprocess: ctx._runSubprocess
   };
+  const outputFormat = input.output_format ?? "text";
   const outcome = await runKimiSafe(
     {
       prompt: input.prompt,
-      outputFormat: "text",
-      finalMessageOnly: true,
+      outputFormat,
+      // --quiet alias requires text mode; stream-json must NOT pair with it.
+      finalMessageOnly: outputFormat === "text",
       model: input.model,
       workDir: input.work_dir,
       addDirs: input.add_dirs,
@@ -19507,13 +19615,19 @@ async function runStatusTool(ctx) {
     pluginVersion: ctx.pluginVersion,
     binary: ctx.binary
   });
+  const drift = getDriftState();
   const cli = {
     binary: ctx.binary ?? "kimi",
     version: probe.version,
     compat_entry: probe.entry.supported ? probe.entry.id : null,
     supported: probe.entry.supported,
     unsupported: probe.unsupported,
-    error: probe.error ? { code: probe.error.code, message: probe.error.message } : null
+    error: probe.error ? { code: probe.error.code, message: probe.error.message } : null,
+    shape_drift: {
+      count: drift.count,
+      active: drift.active,
+      recent_kinds: drift.recentKinds
+    }
   };
   return {
     plugin: "kimi",
@@ -19564,7 +19678,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     },
     {
       name: "kimi_query",
-      description: "Run a single read-only kimi prompt and return the final assistant message. Default 120s timeout (cap 300s). Optional model, work_dir, add_dirs, max_steps_per_turn, session_id.",
+      description: "Run a single read-only kimi prompt and return the final assistant message. Default 120s timeout (cap 300s). Optional model, work_dir, add_dirs, max_steps_per_turn, session_id, output_format (set to 'stream-json' to also receive the full event stream in structuredContent.raw_events).",
       inputSchema: {
         type: "object",
         required: ["prompt"],
@@ -19579,7 +19693,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           session_id: {
             type: "string",
             pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-          }
+          },
+          output_format: { type: "string", enum: ["text", "stream-json"] }
         }
       }
     },
