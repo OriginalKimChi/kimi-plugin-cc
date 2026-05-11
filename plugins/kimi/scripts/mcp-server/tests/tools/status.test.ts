@@ -1,7 +1,12 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { resetDriftState, recordDriftEvent, getDriftState } from "../../src/adapter/drift-counter.js";
+
+beforeEach(() => {
+  resetDriftState();
+});
 import {
   runStatusTool,
   type StatusContext,
@@ -57,6 +62,11 @@ describe("runStatusTool — happy path", () => {
     expect(payload.cli.compat_entry).toBe("v1.41");
     expect(payload.cli.supported).toBe(true);
     expect(payload.cli.unsupported).toBe(false);
+    expect(payload.cli.shape_drift).toEqual({
+      count: expect.any(Number),
+      active: expect.any(Boolean),
+      recent_kinds: expect.any(Array),
+    });
     expect(payload.cli.error).toBeNull();
   });
 });
@@ -182,6 +192,19 @@ describe("runStatusTool — auth state from filesystem", () => {
     expect(payload.auth.preferred).toBe("none"); // preferred reflects env presence
     expect(payload.state).toBe("ok"); // OAuth on disk is sufficient
     expect(payload.auth.remediation).toBeNull();
+  });
+
+  it("drift events surface via cli.shape_drift (active=true after threshold)", async () => {
+    recordDriftEvent("missing_trailing_marker");
+    recordDriftEvent("missing_trailing_marker");
+    recordDriftEvent("stream_json_malformed");
+    expect(getDriftState().active).toBe(true);
+
+    const payload = await runStatusTool(baseCtx());
+    expect(payload.cli.shape_drift.count).toBe(3);
+    expect(payload.cli.shape_drift.active).toBe(true);
+    expect(payload.cli.shape_drift.recent_kinds).toContain("missing_trailing_marker");
+    expect(payload.cli.shape_drift.recent_kinds).toContain("stream_json_malformed");
   });
 
   it("config.toml api_key non-empty → auth.state='config_file'", async () => {

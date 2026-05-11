@@ -7,6 +7,10 @@ import {
   probeKimiVersion,
   type CliProbeResult,
 } from "../adapter/cli-probe.js";
+import {
+  getDriftState,
+  type DriftKind,
+} from "../adapter/drift-counter.js";
 
 export type StatusState = "ok" | "degraded" | "missing";
 
@@ -26,6 +30,11 @@ export interface StatusCli {
   supported: boolean;
   unsupported: boolean;
   error: { code: string; message: string } | null;
+  shape_drift: {
+    count: number;
+    active: boolean;
+    recent_kinds: DriftKind[];
+  };
 }
 
 export interface StatusPayload {
@@ -57,6 +66,7 @@ export async function runStatusTool(ctx: StatusContext): Promise<StatusPayload> 
         binary: ctx.binary,
       });
 
+  const drift = getDriftState();
   const cli: StatusCli = {
     binary: ctx.binary ?? "kimi",
     version: probe.version,
@@ -66,6 +76,11 @@ export async function runStatusTool(ctx: StatusContext): Promise<StatusPayload> 
     error: probe.error
       ? { code: probe.error.code, message: probe.error.message }
       : null,
+    shape_drift: {
+      count: drift.count,
+      active: drift.active,
+      recent_kinds: drift.recentKinds,
+    },
   };
 
   return {

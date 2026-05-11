@@ -1,10 +1,18 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  getDriftState,
+  resetDriftState,
+} from "../../src/adapter/drift-counter.js";
 import { PathValidationError } from "../../src/adapter/path-validator.js";
 import { runKimi, type RunKimiContext } from "../../src/adapter/runner.js";
 import type { SubprocessOptions, SubprocessResult } from "../../src/adapter/subprocess-runner.js";
+
+beforeEach(() => {
+  resetDriftState();
+});
 
 const UUID = "12345678-1234-1234-1234-123456789abc";
 
@@ -430,5 +438,45 @@ describe("runKimi — path validation", () => {
       rmSync(allowedRaw, { recursive: true, force: true });
       rmSync(otherRaw, { recursive: true, force: true });
     }
+  });
+});
+
+describe("runKimi — drift counter integration", () => {
+  it("records 'missing_trailing_marker' when text-mode stdout+stderr have no session line", async () => {
+    const { fn } = fakeSubprocess({ stdout: "just an answer, no marker\n", stderr: "" });
+
+    await runKimi(
+      { prompt: "x", outputFormat: "text", finalMessageOnly: true, timeoutSeconds: 1 },
+      baseCtx({ _runSubprocess: fn }),
+    );
+
+    const state = getDriftState();
+    expect(state.count).toBe(1);
+    expect(state.recentKinds).toContain("missing_trailing_marker");
+  });
+
+  it("does NOT record drift when text-mode stderr carries the session line (kimi 1.41 --quiet)", async () => {
+    const stderrMarker = "\nTo resume this session: kimi -r 12345678-1234-1234-1234-123456789abc\n";
+    const { fn } = fakeSubprocess({ stdout: "pong\n", stderr: stderrMarker });
+
+    await runKimi(
+      { prompt: "x", outputFormat: "text", finalMessageOnly: true, timeoutSeconds: 1 },
+      baseCtx({ _runSubprocess: fn }),
+    );
+
+    expect(getDriftState().count).toBe(0);
+  });
+
+  it("records 'stream_json_malformed' when stream-json yields zero events", async () => {
+    const { fn } = fakeSubprocess({ stdout: "garbage that won't parse\n", stderr: "" });
+
+    await runKimi(
+      { prompt: "x", outputFormat: "stream-json", timeoutSeconds: 1 },
+      baseCtx({ _runSubprocess: fn }),
+    );
+
+    const state = getDriftState();
+    expect(state.count).toBeGreaterThanOrEqual(1);
+    expect(state.recentKinds).toContain("stream_json_malformed");
   });
 });

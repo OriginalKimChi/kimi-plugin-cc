@@ -1,4 +1,5 @@
 import { buildArgv } from "./argv.js";
+import { recordDriftEvent } from "./drift-counter.js";
 import { parseStreamJsonStdout, type KimiStreamEvent } from "./parser-stream-json.js";
 import { extractSessionId, parseTextStdout } from "./parser-text.js";
 import {
@@ -120,26 +121,30 @@ export async function runKimi(
 
   if (inv.outputFormat === "text") {
     const parsed = parseTextStdout(sub.stdout);
-    // kimi-cli 1.41 --quiet writes the trailing 'To resume this session: ...'
-    // marker to stderr (not stdout). Fall back to stderr if stdout's parser
-    // didn't find it.
     const sessionId = parsed.sessionId ?? extractSessionId(sub.stderr);
+    const trailingMarkerMissing = sessionId === null;
+    if (trailingMarkerMissing) recordDriftEvent("missing_trailing_marker");
     return {
       ...common,
       sessionId,
       finalMessage: redactSecrets(scrubControlChars(parsed.finalMessage), secrets),
-      trailingMarkerMissing: sessionId === null,
+      trailingMarkerMissing,
     };
   }
 
   const parsed = parseStreamJsonStdout(sub.stdout);
   const sessionId = parsed.sessionId ?? extractSessionId(sub.stderr);
+  const trailingMarkerMissing = sessionId === null;
+  if (parsed.events.length === 0 && sub.exitCode === 0) {
+    recordDriftEvent("stream_json_malformed");
+  }
+  if (trailingMarkerMissing) recordDriftEvent("missing_trailing_marker");
   return {
     ...common,
     sessionId,
     finalMessage: redactSecrets(scrubControlChars(parsed.finalMessage), secrets),
     rawEvents: parsed.events,
-    trailingMarkerMissing: sessionId === null,
+    trailingMarkerMissing,
   };
 }
 
