@@ -4,8 +4,10 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { runKimiAnalyze } from "./tools/analyze.js";
 import { runKimiQuery } from "./tools/query.js";
 import { runKimiResume } from "./tools/resume.js";
+import { runKimiReview } from "./tools/review.js";
 import { runStatusTool } from "./tools/status.js";
 
 const PLUGIN_VERSION = "0.0.1";
@@ -73,6 +75,52 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
       },
     },
+    {
+      name: "kimi_analyze",
+      description:
+        "Run a kimi prompt focused on analysing a repo or code area and return the final assistant message. Read-only. Default 300s timeout (cap 600s). Same options as kimi_query.",
+      inputSchema: {
+        type: "object",
+        required: ["prompt"],
+        additionalProperties: false,
+        properties: {
+          prompt: { type: "string", minLength: 1, maxLength: 50000 },
+          model: { type: "string", minLength: 1, maxLength: 256 },
+          work_dir: { type: "string" },
+          add_dirs: { type: "array", items: { type: "string" }, maxItems: 10 },
+          max_steps_per_turn: { type: "integer", minimum: 1, maximum: 100 },
+          timeout_seconds: { type: "integer", minimum: 1, maximum: 600 },
+          session_id: {
+            type: "string",
+            pattern:
+              "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          },
+        },
+      },
+    },
+    {
+      name: "kimi_review",
+      description:
+        "Run a kimi prompt focused on reviewing a diff or branch and return the final assistant message. Read-only. Default 300s timeout (cap 600s). Same options as kimi_query.",
+      inputSchema: {
+        type: "object",
+        required: ["prompt"],
+        additionalProperties: false,
+        properties: {
+          prompt: { type: "string", minLength: 1, maxLength: 50000 },
+          model: { type: "string", minLength: 1, maxLength: 256 },
+          work_dir: { type: "string" },
+          add_dirs: { type: "array", items: { type: "string" }, maxItems: 10 },
+          max_steps_per_turn: { type: "integer", minimum: 1, maximum: 100 },
+          timeout_seconds: { type: "integer", minimum: 1, maximum: 600 },
+          session_id: {
+            type: "string",
+            pattern:
+              "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          },
+        },
+      },
+    },
   ],
 }));
 
@@ -99,6 +147,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
     case "kimi_resume": {
       const out = await runKimiResume(request.params.arguments ?? {}, {
+        parentEnv: process.env,
+        pluginVersion: PLUGIN_VERSION,
+      });
+      return out as unknown as { content: Array<{ type: "text"; text: string }> };
+    }
+    case "kimi_analyze": {
+      const out = await runKimiAnalyze(request.params.arguments ?? {}, {
+        parentEnv: process.env,
+        pluginVersion: PLUGIN_VERSION,
+      });
+      return out as unknown as { content: Array<{ type: "text"; text: string }> };
+    }
+    case "kimi_review": {
+      const out = await runKimiReview(request.params.arguments ?? {}, {
         parentEnv: process.env,
         pluginVersion: PLUGIN_VERSION,
       });

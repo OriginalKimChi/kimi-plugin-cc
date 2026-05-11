@@ -18650,6 +18650,54 @@ function textResultEnvelope(r) {
   };
 }
 
+// src/tools/analyze.ts
+var ANALYZE_DEFAULT_TIMEOUT_SECONDS = 300;
+var ANALYZE_MAX_TIMEOUT_SECONDS = 600;
+var KimiAnalyzeInputSchema = external_exports.object({
+  prompt: external_exports.string().min(1).max(5e4),
+  model: external_exports.string().min(1).max(256).optional(),
+  work_dir: external_exports.string().optional(),
+  add_dirs: external_exports.array(external_exports.string()).max(10).optional(),
+  max_steps_per_turn: external_exports.number().int().positive().max(100).optional(),
+  timeout_seconds: external_exports.number().int().positive().max(ANALYZE_MAX_TIMEOUT_SECONDS).optional(),
+  session_id: external_exports.string().uuid().optional()
+}).strict();
+async function runKimiAnalyze(rawInput, ctx) {
+  const parsed = KimiAnalyzeInputSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    return errorEnvelope("validation_error", parsed.error.message, {
+      issues: parsed.error.issues
+    });
+  }
+  const input = parsed.data;
+  const adapterCtx = {
+    parentEnv: ctx.parentEnv,
+    pluginVersion: ctx.pluginVersion,
+    binary: ctx.binary,
+    pathConstraints: ctx.pathConstraints,
+    _runSubprocess: ctx._runSubprocess
+  };
+  const outcome = await runKimiSafe(
+    {
+      prompt: input.prompt,
+      outputFormat: "text",
+      finalMessageOnly: true,
+      model: input.model,
+      workDir: input.work_dir,
+      addDirs: input.add_dirs,
+      maxStepsPerTurn: input.max_steps_per_turn,
+      sessionId: input.session_id,
+      timeoutSeconds: input.timeout_seconds ?? ANALYZE_DEFAULT_TIMEOUT_SECONDS
+    },
+    adapterCtx,
+    { authFailurePatterns: ctx.authFailurePatterns }
+  );
+  if (!outcome.ok) {
+    return errorEnvelope(outcome.error.code, outcome.error.message, outcome.error.details);
+  }
+  return textResultEnvelope(outcome.result);
+}
+
 // src/tools/query.ts
 var QUERY_DEFAULT_TIMEOUT_SECONDS = 120;
 var QUERY_MAX_TIMEOUT_SECONDS = 300;
@@ -18736,6 +18784,54 @@ async function runKimiResume(rawInput, ctx) {
       maxStepsPerTurn: input.max_steps_per_turn,
       sessionId: input.session_id,
       timeoutSeconds: input.timeout_seconds ?? RESUME_DEFAULT_TIMEOUT_SECONDS
+    },
+    adapterCtx,
+    { authFailurePatterns: ctx.authFailurePatterns }
+  );
+  if (!outcome.ok) {
+    return errorEnvelope(outcome.error.code, outcome.error.message, outcome.error.details);
+  }
+  return textResultEnvelope(outcome.result);
+}
+
+// src/tools/review.ts
+var REVIEW_DEFAULT_TIMEOUT_SECONDS = 300;
+var REVIEW_MAX_TIMEOUT_SECONDS = 600;
+var KimiReviewInputSchema = external_exports.object({
+  prompt: external_exports.string().min(1).max(5e4),
+  model: external_exports.string().min(1).max(256).optional(),
+  work_dir: external_exports.string().optional(),
+  add_dirs: external_exports.array(external_exports.string()).max(10).optional(),
+  max_steps_per_turn: external_exports.number().int().positive().max(100).optional(),
+  timeout_seconds: external_exports.number().int().positive().max(REVIEW_MAX_TIMEOUT_SECONDS).optional(),
+  session_id: external_exports.string().uuid().optional()
+}).strict();
+async function runKimiReview(rawInput, ctx) {
+  const parsed = KimiReviewInputSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    return errorEnvelope("validation_error", parsed.error.message, {
+      issues: parsed.error.issues
+    });
+  }
+  const input = parsed.data;
+  const adapterCtx = {
+    parentEnv: ctx.parentEnv,
+    pluginVersion: ctx.pluginVersion,
+    binary: ctx.binary,
+    pathConstraints: ctx.pathConstraints,
+    _runSubprocess: ctx._runSubprocess
+  };
+  const outcome = await runKimiSafe(
+    {
+      prompt: input.prompt,
+      outputFormat: "text",
+      finalMessageOnly: true,
+      model: input.model,
+      workDir: input.work_dir,
+      addDirs: input.add_dirs,
+      maxStepsPerTurn: input.max_steps_per_turn,
+      sessionId: input.session_id,
+      timeoutSeconds: input.timeout_seconds ?? REVIEW_DEFAULT_TIMEOUT_SECONDS
     },
     adapterCtx,
     { authFailurePatterns: ctx.authFailurePatterns }
@@ -18938,6 +19034,48 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           timeout_seconds: { type: "integer", minimum: 1, maximum: 600 }
         }
       }
+    },
+    {
+      name: "kimi_analyze",
+      description: "Run a kimi prompt focused on analysing a repo or code area and return the final assistant message. Read-only. Default 300s timeout (cap 600s). Same options as kimi_query.",
+      inputSchema: {
+        type: "object",
+        required: ["prompt"],
+        additionalProperties: false,
+        properties: {
+          prompt: { type: "string", minLength: 1, maxLength: 5e4 },
+          model: { type: "string", minLength: 1, maxLength: 256 },
+          work_dir: { type: "string" },
+          add_dirs: { type: "array", items: { type: "string" }, maxItems: 10 },
+          max_steps_per_turn: { type: "integer", minimum: 1, maximum: 100 },
+          timeout_seconds: { type: "integer", minimum: 1, maximum: 600 },
+          session_id: {
+            type: "string",
+            pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        }
+      }
+    },
+    {
+      name: "kimi_review",
+      description: "Run a kimi prompt focused on reviewing a diff or branch and return the final assistant message. Read-only. Default 300s timeout (cap 600s). Same options as kimi_query.",
+      inputSchema: {
+        type: "object",
+        required: ["prompt"],
+        additionalProperties: false,
+        properties: {
+          prompt: { type: "string", minLength: 1, maxLength: 5e4 },
+          model: { type: "string", minLength: 1, maxLength: 256 },
+          work_dir: { type: "string" },
+          add_dirs: { type: "array", items: { type: "string" }, maxItems: 10 },
+          max_steps_per_turn: { type: "integer", minimum: 1, maximum: 100 },
+          timeout_seconds: { type: "integer", minimum: 1, maximum: 600 },
+          session_id: {
+            type: "string",
+            pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        }
+      }
     }
   ]
 }));
@@ -18962,6 +19100,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
     case "kimi_resume": {
       const out = await runKimiResume(request.params.arguments ?? {}, {
+        parentEnv: process.env,
+        pluginVersion: PLUGIN_VERSION
+      });
+      return out;
+    }
+    case "kimi_analyze": {
+      const out = await runKimiAnalyze(request.params.arguments ?? {}, {
+        parentEnv: process.env,
+        pluginVersion: PLUGIN_VERSION
+      });
+      return out;
+    }
+    case "kimi_review": {
+      const out = await runKimiReview(request.params.arguments ?? {}, {
         parentEnv: process.env,
         pluginVersion: PLUGIN_VERSION
       });
