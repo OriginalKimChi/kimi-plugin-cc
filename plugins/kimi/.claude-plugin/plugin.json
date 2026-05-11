@@ -1,0 +1,36 @@
+{
+  "name": "kimi",
+  "version": "0.0.1",
+  "description": "Unofficial Claude Code plugin that exposes the Kimi (Moonshot) coding model as MCP tools.",
+  "author": { "name": "OriginalKimChi" },
+  "license": "MIT",
+  "homepage": "https://github.com/OriginalKimChi/kimi-plugin-cc",
+  "repository": "https://github.com/OriginalKimChi/kimi-plugin-cc",
+  "keywords": ["kimi", "moonshot", "mcp", "claude-code"],
+  "userConfig": {
+    "kimi_code_api_key": {
+      "type": "string",
+      "title": "Kimi Code API key",
+      "description": "Recommended. Kimi Code product API key (from kimi.moonshot.cn). Stored in the system keychain.",
+      "sensitive": true,
+      "required": false
+    },
+    "moonshot_api_key": {
+      "type": "string",
+      "title": "Moonshot API key (fallback)",
+      "description": "Alternative. Generic Moonshot platform API key. Used only if Kimi Code key is empty. Stored in the system keychain.",
+      "sensitive": true,
+      "required": false
+    }
+  },
+  "mcpServers": {
+    "kimi": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/mcp-server/dist/index.cjs"],
+      "env": {
+        "KIMI_CODE_API_KEY": "${user_config.kimi_code_api_key}",
+        "MOONSHOT_API_KEY": "${user_config.moonshot_api_key}"
+      }
+    }
+  }
+}

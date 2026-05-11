@@ -1,0 +1,19 @@
+{
+  "name": "originalkimchi-kimi",
+  "owner": {
+    "name": "OriginalKimChi"
+  },
+  "metadata": {
+    "description": "Unofficial Claude Code plugin that exposes the Kimi (Moonshot) coding model as MCP tools.",
+    "version": "0.0.1"
+  },
+  "plugins": [
+    {
+      "name": "kimi",
+      "description": "Delegate long-context analysis, adversarial review, and autonomous edits to Kimi from inside Claude Code.",
+      "version": "0.0.1",
+      "author": { "name": "OriginalKimChi" },
+      "source": "./plugins/kimi"
+    }
+  ]
+}
