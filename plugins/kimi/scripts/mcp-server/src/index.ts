@@ -4,6 +4,9 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { runKimiQuery } from "./tools/query.js";
+import { runKimiResume } from "./tools/resume.js";
+import { runStatusTool } from "./tools/status.js";
 
 const PLUGIN_VERSION = "0.0.1";
 
@@ -17,40 +20,93 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "kimi_status",
       description:
-        "Return basic health info for the kimi MCP server. Used by the packaging spike to verify the plugin is wired up correctly. No external calls.",
+        "Return health info for the kimi MCP server: plugin version, auth env presence, kimi CLI version detection, and a high-level state (ok / degraded / missing). Probes 'kimi --version' once per call.",
       inputSchema: {
         type: "object",
         properties: {},
         additionalProperties: false,
       },
     },
+    {
+      name: "kimi_query",
+      description:
+        "Run a single read-only kimi prompt and return the final assistant message. Default 120s timeout (cap 300s). Optional model, work_dir, add_dirs, max_steps_per_turn, session_id.",
+      inputSchema: {
+        type: "object",
+        required: ["prompt"],
+        additionalProperties: false,
+        properties: {
+          prompt: { type: "string", minLength: 1, maxLength: 50000 },
+          model: { type: "string", minLength: 1, maxLength: 256 },
+          work_dir: { type: "string" },
+          add_dirs: { type: "array", items: { type: "string" }, maxItems: 10 },
+          max_steps_per_turn: { type: "integer", minimum: 1, maximum: 100 },
+          timeout_seconds: { type: "integer", minimum: 1, maximum: 300 },
+          session_id: {
+            type: "string",
+            pattern:
+              "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          },
+        },
+      },
+    },
+    {
+      name: "kimi_resume",
+      description:
+        "Resume an existing kimi session (`kimi -r <session_id>`) and return the final assistant message. Default 300s timeout (cap 600s). Requires session_id; otherwise same options as kimi_query.",
+      inputSchema: {
+        type: "object",
+        required: ["prompt", "session_id"],
+        additionalProperties: false,
+        properties: {
+          prompt: { type: "string", minLength: 1, maxLength: 50000 },
+          session_id: {
+            type: "string",
+            pattern:
+              "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+          },
+          model: { type: "string", minLength: 1, maxLength: 256 },
+          work_dir: { type: "string" },
+          add_dirs: { type: "array", items: { type: "string" }, maxItems: 10 },
+          max_steps_per_turn: { type: "integer", minimum: 1, maximum: 100 },
+          timeout_seconds: { type: "integer", minimum: 1, maximum: 600 },
+        },
+      },
+    },
   ],
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name !== "kimi_status") {
-    throw new Error(`Unknown tool: ${request.params.name}`);
+  switch (request.params.name) {
+    case "kimi_status": {
+      const payload = await runStatusTool({
+        parentEnv: process.env,
+        pluginVersion: PLUGIN_VERSION,
+        pluginRoot: process.env.CLAUDE_PLUGIN_ROOT ?? null,
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
+      };
+    }
+    case "kimi_query": {
+      const out = await runKimiQuery(request.params.arguments ?? {}, {
+        parentEnv: process.env,
+        pluginVersion: PLUGIN_VERSION,
+      });
+      // MCP SDK's CallToolResult is a discriminated union with a task-based
+      // variant; widening through unknown is fine — we return the content-based shape.
+      return out as unknown as { content: Array<{ type: "text"; text: string }> };
+    }
+    case "kimi_resume": {
+      const out = await runKimiResume(request.params.arguments ?? {}, {
+        parentEnv: process.env,
+        pluginVersion: PLUGIN_VERSION,
+      });
+      return out as unknown as { content: Array<{ type: "text"; text: string }> };
+    }
+    default:
+      throw new Error(`Unknown tool: ${request.params.name}`);
   }
-
-  const hasKimiCodeKey = Boolean(process.env.KIMI_CODE_API_KEY);
-  const hasMoonshotKey = Boolean(process.env.MOONSHOT_API_KEY);
-
-  const payload = {
-    plugin: "kimi",
-    version: PLUGIN_VERSION,
-    state: "ok",
-    node: process.version,
-    plugin_root: process.env.CLAUDE_PLUGIN_ROOT ?? null,
-    auth: {
-      kimi_code_api_key_present: hasKimiCodeKey,
-      moonshot_api_key_present: hasMoonshotKey,
-      preferred: hasKimiCodeKey ? "kimi_code" : hasMoonshotKey ? "moonshot" : "none",
-    },
-  };
-
-  return {
-    content: [{ type: "text", text: JSON.stringify(payload, null, 2) }],
-  };
 });
 
 async function main() {
