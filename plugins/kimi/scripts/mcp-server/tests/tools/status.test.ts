@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   runStatusTool,
   type StatusContext,
@@ -43,9 +46,12 @@ describe("runStatusTool — happy path", () => {
     expect(payload.state).toBe("ok");
     expect(payload.node).toBe(process.version);
     expect(payload.plugin_root).toBe("/opt/plugin");
+    expect(payload.auth.state).toBe("env");
+    expect(payload.auth.source).toBe("kimi_code");
     expect(payload.auth.kimi_code_api_key_present).toBe(true);
     expect(payload.auth.moonshot_api_key_present).toBe(false);
     expect(payload.auth.preferred).toBe("kimi_code");
+    expect(payload.auth.remediation).toBeNull();
     expect(payload.cli.binary).toBe("kimi");
     expect(payload.cli.version).toBe("1.41.0");
     expect(payload.cli.compat_entry).toBe("v1.41");
@@ -135,7 +141,64 @@ describe("runStatusTool — state derivation", () => {
     );
     expect(payload.state).toBe("ok");
     expect(payload.auth.preferred).toBe("moonshot");
+    expect(payload.auth.source).toBe("moonshot");
     expect(payload.auth.kimi_code_api_key_present).toBe(false);
     expect(payload.auth.moonshot_api_key_present).toBe(true);
+  });
+
+  it("no env keys + missing auth → remediation hints kimi login", async () => {
+    const payload = await runStatusTool(
+      baseCtx({ parentEnv: { PATH: "/usr/bin" /* no HOME, no keys */ } }),
+    );
+    expect(payload.auth.state).toBe("missing");
+    expect(payload.auth.remediation).toMatch(/kimi login/);
+  });
+});
+
+describe("runStatusTool — auth state from filesystem", () => {
+  let HOME_RAW: string;
+  let HOME: string;
+
+  beforeAll(() => {
+    HOME_RAW = mkdtempSync(path.join(os.tmpdir(), "kimi-status-home-"));
+    HOME = HOME_RAW;
+  });
+
+  afterAll(() => {
+    rmSync(HOME_RAW, { recursive: true, force: true });
+  });
+
+  it("OAuth credentials file (no env) → auth.state='oauth', overall state='ok'", async () => {
+    mkdirSync(path.join(HOME, ".kimi", "credentials"), { recursive: true });
+    writeFileSync(
+      path.join(HOME, ".kimi", "credentials", "kimi-code.json"),
+      JSON.stringify({ access_token: "stub" }),
+    );
+
+    const payload = await runStatusTool(baseCtx({ parentEnv: { HOME } }));
+
+    expect(payload.auth.state).toBe("oauth");
+    expect(payload.auth.kimi_code_api_key_present).toBe(false);
+    expect(payload.auth.preferred).toBe("none"); // preferred reflects env presence
+    expect(payload.state).toBe("ok"); // OAuth on disk is sufficient
+    expect(payload.auth.remediation).toBeNull();
+  });
+
+  it("config.toml api_key non-empty → auth.state='config_file'", async () => {
+    rmSync(path.join(HOME, ".kimi"), { recursive: true, force: true });
+    mkdirSync(path.join(HOME, ".kimi"), { recursive: true });
+    writeFileSync(
+      path.join(HOME, ".kimi", "config.toml"),
+      [
+        '[providers."managed:kimi-code"]',
+        'api_key = "sk-cf-xxxx"',
+        "",
+      ].join("\n"),
+    );
+
+    const payload = await runStatusTool(baseCtx({ parentEnv: { HOME } }));
+
+    expect(payload.auth.state).toBe("config_file");
+    expect(payload.state).toBe("ok");
   });
 });

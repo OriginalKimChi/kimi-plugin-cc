@@ -1,4 +1,5 @@
 import { buildArgv } from "./argv.js";
+import { probeAuth } from "./auth-probe.js";
 import {
   KimiError,
   classifyKimiResult,
@@ -28,12 +29,14 @@ export async function runKimiSafe(
   ctx: RunKimiContext,
   opts: RunKimiSafeOptions = {},
 ): Promise<KimiOutcome> {
-  if (!hasAuth(ctx.parentEnv)) {
+  const home = ctx.parentEnv.HOME ?? "";
+  const auth = probeAuth({ env: ctx.parentEnv, home });
+  if (auth.state === "missing") {
     return {
       ok: false,
       error: new KimiError(
         "auth_missing",
-        "kimi CLI auth not configured: set KIMI_CODE_API_KEY or MOONSHOT_API_KEY",
+        "kimi CLI is not authenticated on this machine. Run `kimi login` in a terminal, then retry. Or set KIMI_CODE_API_KEY / MOONSHOT_API_KEY in the environment.",
         emptyDetails(),
       ),
     };
@@ -90,13 +93,6 @@ function toKimiError(
     "cli_exit_nonzero",
     err instanceof Error ? err.message : String(err),
     details,
-  );
-}
-
-function hasAuth(env: NodeJS.ProcessEnv): boolean {
-  return (
-    typeof env.KIMI_CODE_API_KEY === "string" && env.KIMI_CODE_API_KEY.length > 0 ||
-    typeof env.MOONSHOT_API_KEY === "string" && env.MOONSHOT_API_KEY.length > 0
   );
 }
 

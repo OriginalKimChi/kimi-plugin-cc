@@ -1,4 +1,9 @@
 import {
+  probeAuth,
+  type AuthSource,
+  type AuthState,
+} from "../adapter/auth-probe.js";
+import {
   probeKimiVersion,
   type CliProbeResult,
 } from "../adapter/cli-probe.js";
@@ -6,9 +11,12 @@ import {
 export type StatusState = "ok" | "degraded" | "missing";
 
 export interface StatusAuth {
+  state: AuthState;
+  source: AuthSource;
   kimi_code_api_key_present: boolean;
   moonshot_api_key_present: boolean;
   preferred: "kimi_code" | "moonshot" | "none";
+  remediation: string | null;
 }
 
 export interface StatusCli {
@@ -74,15 +82,22 @@ export async function runStatusTool(ctx: StatusContext): Promise<StatusPayload> 
 function buildAuth(env: NodeJS.ProcessEnv): StatusAuth {
   const kimi = Boolean(env.KIMI_CODE_API_KEY);
   const moonshot = Boolean(env.MOONSHOT_API_KEY);
+  const auth = probeAuth({ env, home: env.HOME ?? "" });
   return {
+    state: auth.state,
+    source: auth.source,
     kimi_code_api_key_present: kimi,
     moonshot_api_key_present: moonshot,
     preferred: kimi ? "kimi_code" : moonshot ? "moonshot" : "none",
+    remediation:
+      auth.state === "missing"
+        ? "Run `kimi login` in a terminal (recommended), or set KIMI_CODE_API_KEY / MOONSHOT_API_KEY in the environment."
+        : null,
   };
 }
 
 function deriveState(auth: StatusAuth, probe: CliProbeResult): StatusState {
-  if (auth.preferred === "none") return "missing";
+  if (auth.state === "missing") return "missing";
   if (probe.error?.code === "cli_not_found") return "missing";
   if (probe.unsupported || probe.version === null) return "degraded";
   return "ok";
