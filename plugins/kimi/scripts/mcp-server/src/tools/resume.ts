@@ -30,6 +30,7 @@ export const KimiResumeInputSchema = z
       .positive()
       .max(RESUME_MAX_TIMEOUT_SECONDS)
       .optional(),
+    output_format: z.enum(["text", "stream-json"]).optional(),
   })
   .strict();
 
@@ -64,11 +65,12 @@ export async function runKimiResume(
     _runSubprocess: ctx._runSubprocess,
   };
 
+  const outputFormat = input.output_format ?? "text";
   const outcome = await runKimiSafe(
     {
       prompt: input.prompt,
-      outputFormat: "text",
-      finalMessageOnly: true,
+      outputFormat,
+      finalMessageOnly: outputFormat === "text",
       model: input.model,
       workDir: input.work_dir,
       addDirs: input.add_dirs,

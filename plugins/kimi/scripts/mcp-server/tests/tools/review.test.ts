@@ -86,6 +86,28 @@ describe("runKimiReview — success", () => {
   });
 });
 
+describe("runKimiReview — stream-json", () => {
+  it("output_format='stream-json' passes through and surfaces raw_events", async () => {
+    const stdout = [
+      `{"role":"assistant","content":"LGTM"}`,
+      `To resume this session: kimi -r ${UUID}`,
+      ``,
+    ].join("\n");
+    const { fn, calls } = fakeSubprocess({ stdout });
+
+    const out = await runKimiReview(
+      { prompt: "review", output_format: "stream-json" },
+      baseCtx({ _runSubprocess: fn }),
+    );
+
+    expect(out.isError).toBeFalsy();
+    expect(calls[0]!.argv).toContain("stream-json");
+    expect(calls[0]!.argv).not.toContain("--quiet");
+    const sc = out.structuredContent as Record<string, unknown>;
+    expect(Array.isArray(sc.raw_events)).toBe(true);
+  });
+});
+
 describe("runKimiReview — validation errors", () => {
   it("missing prompt → isError validation_error, no spawn", async () => {
     const { fn, calls } = fakeSubprocess({});
