@@ -6,7 +6,8 @@
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.cjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integration": "KIMI_PLUGIN_INTEGRATION=1 vitest run tests/integration"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",

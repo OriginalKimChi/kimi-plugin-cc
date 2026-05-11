@@ -32,6 +32,31 @@ npm run build       # → dist/index.cjs
 #   The kimi_status MCP tool should return state=ok and report which API key is present.
 ```
 
+## Development
+
+```bash
+cd plugins/kimi/scripts/mcp-server
+npm install
+npm run typecheck   # tsc --noEmit
+npm test            # vitest run (unit + adapter; integration suite auto-skips)
+npm run build       # → dist/index.cjs
+```
+
+### Integration tests (opt-in)
+
+The `tests/integration/` suite hits the real `kimi` CLI binary and consumes API
+quota. It is **skipped by default**. To run it you need:
+
+- `kimi` on your `PATH`
+- Either `KIMI_CODE_API_KEY` or `MOONSHOT_API_KEY` set in the environment
+
+```bash
+KIMI_CODE_API_KEY=... npm run test:integration
+```
+
+The suite covers the P0-G smoke matrix: `kimi --version` parsing, a `kimi_query`
+round-trip, and a `kimi_resume` reuse of the returned session_id.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

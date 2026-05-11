@@ -3225,8 +3225,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path4) {
-      let input = path4;
+    function removeDotSegments(path5) {
+      let input = path5;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3478,8 +3478,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path4, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
+        const [path5, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path5 && path5 !== "/" ? path5 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -7363,8 +7363,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path4, errorMaps, issueData } = params;
-  const fullPath = [...path4, ...issueData.path || []];
+  const { data, path: path5, errorMaps, issueData } = params;
+  const fullPath = [...path5, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7480,11 +7480,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path4, key) {
+  constructor(parent, value, path5, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path4;
+    this._path = path5;
     this._key = key;
   }
   get path() {
@@ -11122,10 +11122,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path4) {
-  if (!path4)
+function getElementAtPath(obj, path5) {
+  if (!path5)
     return obj;
-  return path4.reduce((acc, key) => acc?.[key], obj);
+  return path5.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11445,11 +11445,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path4, issues) {
+function prefixIssues(path5, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path4);
+    iss.path.unshift(path5);
     return iss;
   });
 }
@@ -18061,8 +18061,68 @@ function buildArgv(inv) {
   if (inv.thinking) argv.push("--thinking");
   if (inv.noThinking) argv.push("--no-thinking");
   if (inv.configFile) argv.push("--config-file", inv.configFile);
-  argv.push(inv.prompt);
+  argv.push("--prompt", inv.prompt);
   return argv;
+}
+
+// src/adapter/auth-probe.ts
+var import_node_fs = require("node:fs");
+var import_node_path2 = __toESM(require("node:path"), 1);
+var MANAGED_SECTION = 'providers."managed:kimi-code"';
+function probeAuth(input) {
+  if (typeof input.env.KIMI_CODE_API_KEY === "string" && input.env.KIMI_CODE_API_KEY.length > 0) {
+    return { state: "env", source: "kimi_code", evidence: null };
+  }
+  if (typeof input.env.MOONSHOT_API_KEY === "string" && input.env.MOONSHOT_API_KEY.length > 0) {
+    return { state: "env", source: "moonshot", evidence: null };
+  }
+  if (!import_node_path2.default.isAbsolute(input.home) || input.home.length === 0) {
+    return { state: "missing", source: null, evidence: null };
+  }
+  const oauthFile = import_node_path2.default.join(input.home, ".kimi", "credentials", "kimi-code.json");
+  if (isReadableFile(oauthFile)) {
+    return { state: "oauth", source: "kimi_code", evidence: oauthFile };
+  }
+  const configToml = import_node_path2.default.join(input.home, ".kimi", "config.toml");
+  if (isReadableFile(configToml)) {
+    const apiKey = readManagedApiKey(configToml);
+    if (apiKey !== null && apiKey.length > 0) {
+      return { state: "config_file", source: "kimi_code", evidence: configToml };
+    }
+  }
+  return { state: "missing", source: null, evidence: null };
+}
+function isReadableFile(p) {
+  try {
+    if (!(0, import_node_fs.existsSync)(p)) return false;
+    return (0, import_node_fs.statSync)(p).isFile();
+  } catch {
+    return false;
+  }
+}
+function readManagedApiKey(tomlPath) {
+  let content;
+  try {
+    content = (0, import_node_fs.readFileSync)(tomlPath, "utf8");
+  } catch {
+    return null;
+  }
+  const lines = content.split(/\r?\n/);
+  let inSection = false;
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.startsWith("[") && line.endsWith("]")) {
+      const header = line.slice(1, -1).trim();
+      inSection = header === MANAGED_SECTION;
+      continue;
+    }
+    if (!inSection) continue;
+    const m = /^api_key\s*=\s*"([^"]*)"\s*$/.exec(line);
+    if (m !== null) {
+      return m[1];
+    }
+  }
+  return null;
 }
 
 // src/adapter/errors.ts
@@ -18135,8 +18195,8 @@ function redactArgv(argv, secrets) {
 }
 
 // src/adapter/path-validator.ts
-var import_node_fs = require("node:fs");
-var import_node_path2 = __toESM(require("node:path"), 1);
+var import_node_fs2 = require("node:fs");
+var import_node_path3 = __toESM(require("node:path"), 1);
 var PathValidationError = class extends Error {
   code;
   field;
@@ -18159,12 +18219,12 @@ function validatePath(opts) {
   if (p.includes(NUL)) {
     throw new PathValidationError("nul_byte", field, p, `${field}: must not contain NUL bytes`);
   }
-  if (!import_node_path2.default.isAbsolute(p)) {
+  if (!import_node_path3.default.isAbsolute(p)) {
     throw new PathValidationError("relative", field, p, `${field}: must be an absolute path`);
   }
   let resolved;
   try {
-    resolved = (0, import_node_fs.realpathSync)(p);
+    resolved = (0, import_node_fs2.realpathSync)(p);
   } catch (err) {
     throw new PathValidationError(
       "not_found",
@@ -18173,7 +18233,7 @@ function validatePath(opts) {
       `${field}: realpath failed (${err.code ?? "ERR"})`
     );
   }
-  const allowedRoots = (opts.allowedRoots ?? []).map((r) => (0, import_node_fs.realpathSync)(r));
+  const allowedRoots = (opts.allowedRoots ?? []).map((r) => (0, import_node_fs2.realpathSync)(r));
   if (allowedRoots.length > 0 && !isUnderAnyRoot(resolved, allowedRoots)) {
     throw new PathValidationError(
       "outside_root",
@@ -18202,7 +18262,7 @@ function validatePath(opts) {
 function recheckPath(v) {
   let current;
   try {
-    current = (0, import_node_fs.realpathSync)(v.original);
+    current = (0, import_node_fs2.realpathSync)(v.original);
   } catch (err) {
     throw new PathValidationError(
       "toctou",
@@ -18239,7 +18299,7 @@ function recheckPath(v) {
 function isUnderAnyRoot(p, roots) {
   for (const root of roots) {
     if (p === root) return true;
-    const withSep = root.endsWith(import_node_path2.default.sep) ? root : root + import_node_path2.default.sep;
+    const withSep = root.endsWith(import_node_path3.default.sep) ? root : root + import_node_path3.default.sep;
     if (p.startsWith(withSep)) return true;
   }
   return false;
@@ -18296,6 +18356,14 @@ function parseStreamJsonStdout(stdout) {
 
 // src/adapter/parser-text.ts
 var SESSION_LINE2 = /^[ \t]*To resume this session: kimi -r ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[ \t\r]*$/gm;
+function extractSessionId(input) {
+  if (input.length === 0) return null;
+  SESSION_LINE2.lastIndex = 0;
+  let last = null;
+  let m;
+  while ((m = SESSION_LINE2.exec(input)) !== null) last = m;
+  return last ? last[1] ?? null : null;
+}
 function parseTextStdout(stdout) {
   if (stdout.length === 0) {
     return { finalMessage: "", sessionId: null, trailingMarkerMissing: true };
@@ -18521,20 +18589,22 @@ async function runKimi(inv, ctx) {
   };
   if (inv.outputFormat === "text") {
     const parsed2 = parseTextStdout(sub.stdout);
+    const sessionId2 = parsed2.sessionId ?? extractSessionId(sub.stderr);
     return {
       ...common,
-      sessionId: parsed2.sessionId,
+      sessionId: sessionId2,
       finalMessage: redactSecrets(scrubControlChars(parsed2.finalMessage), secrets),
-      trailingMarkerMissing: parsed2.trailingMarkerMissing
+      trailingMarkerMissing: sessionId2 === null
     };
   }
   const parsed = parseStreamJsonStdout(sub.stdout);
+  const sessionId = parsed.sessionId ?? extractSessionId(sub.stderr);
   return {
     ...common,
-    sessionId: parsed.sessionId,
+    sessionId,
     finalMessage: redactSecrets(scrubControlChars(parsed.finalMessage), secrets),
     rawEvents: parsed.events,
-    trailingMarkerMissing: parsed.trailingMarkerMissing
+    trailingMarkerMissing: sessionId === null
   };
 }
 function collectSecrets(env) {
@@ -18548,12 +18618,14 @@ function collectSecrets(env) {
 
 // src/adapter/run-safe.ts
 async function runKimiSafe(inv, ctx, opts = {}) {
-  if (!hasAuth(ctx.parentEnv)) {
+  const home = ctx.parentEnv.HOME ?? "";
+  const auth = probeAuth({ env: ctx.parentEnv, home });
+  if (auth.state === "missing") {
     return {
       ok: false,
       error: new KimiError(
         "auth_missing",
-        "kimi CLI auth not configured: set KIMI_CODE_API_KEY or MOONSHOT_API_KEY",
+        "kimi CLI is not authenticated on this machine. Run `kimi login` in a terminal, then retry. Or set KIMI_CODE_API_KEY / MOONSHOT_API_KEY in the environment.",
         emptyDetails()
       )
     };
@@ -18602,9 +18674,6 @@ function toKimiError(err, argv, secrets) {
     err instanceof Error ? err.message : String(err),
     details
   );
-}
-function hasAuth(env) {
-  return typeof env.KIMI_CODE_API_KEY === "string" && env.KIMI_CODE_API_KEY.length > 0 || typeof env.MOONSHOT_API_KEY === "string" && env.MOONSHOT_API_KEY.length > 0;
 }
 function emptyDetails() {
   return { stdout_excerpt: "", stderr_excerpt: "", argv_redacted: [], duration_ms: 0 };
@@ -18727,8 +18796,8 @@ async function executeGit(opts) {
 
 // src/adapter/worktree-guard.ts
 var import_node_crypto = require("node:crypto");
-var import_node_fs2 = require("node:fs");
-var import_node_path3 = __toESM(require("node:path"), 1);
+var import_node_fs3 = require("node:fs");
+var import_node_path4 = __toESM(require("node:path"), 1);
 
 // src/adapter/worktree-list.ts
 function parseWorktreeList(stdout) {
@@ -18892,14 +18961,14 @@ async function prepareCreateWorktree(opts) {
       { field: "worktree_path" }
     );
   }
-  if (!import_node_path3.default.isAbsolute(wtPath)) {
+  if (!import_node_path4.default.isAbsolute(wtPath)) {
     throw new WorktreeValidationError(
       "path_validation",
       "worktree_path must be an absolute path",
       { field: "worktree_path" }
     );
   }
-  if ((0, import_node_fs2.existsSync)(wtPath)) {
+  if ((0, import_node_fs3.existsSync)(wtPath)) {
     throw new WorktreeValidationError(
       "worktree_already_exists",
       `worktree_path already exists: ${wtPath}`,
@@ -19015,7 +19084,7 @@ function generateBranchName(baseRef) {
 }
 function isSubpath(child, parent) {
   if (child === parent) return true;
-  const parentWithSep = parent.endsWith(import_node_path3.default.sep) ? parent : parent + import_node_path3.default.sep;
+  const parentWithSep = parent.endsWith(import_node_path4.default.sep) ? parent : parent + import_node_path4.default.sep;
   return child.startsWith(parentWithSep);
 }
 function toWorktreeValidationError(err, field) {
@@ -19459,14 +19528,18 @@ async function runStatusTool(ctx) {
 function buildAuth(env) {
   const kimi = Boolean(env.KIMI_CODE_API_KEY);
   const moonshot = Boolean(env.MOONSHOT_API_KEY);
+  const auth = probeAuth({ env, home: env.HOME ?? "" });
   return {
+    state: auth.state,
+    source: auth.source,
     kimi_code_api_key_present: kimi,
     moonshot_api_key_present: moonshot,
-    preferred: kimi ? "kimi_code" : moonshot ? "moonshot" : "none"
+    preferred: kimi ? "kimi_code" : moonshot ? "moonshot" : "none",
+    remediation: auth.state === "missing" ? "Run `kimi login` in a terminal (recommended), or set KIMI_CODE_API_KEY / MOONSHOT_API_KEY in the environment." : null
   };
 }
 function deriveState(auth, probe) {
-  if (auth.preferred === "none") return "missing";
+  if (auth.state === "missing") return "missing";
   if (probe.error?.code === "cli_not_found") return "missing";
   if (probe.unsupported || probe.version === null) return "degraded";
   return "ok";
