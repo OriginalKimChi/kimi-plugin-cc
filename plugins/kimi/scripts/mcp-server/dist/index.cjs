@@ -3225,8 +3225,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path3) {
-      let input = path3;
+    function removeDotSegments(path4) {
+      let input = path4;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -3478,8 +3478,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path3, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path3 && path3 !== "/" ? path3 : void 0;
+        const [path4, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path4 && path4 !== "/" ? path4 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -7363,8 +7363,8 @@ function getErrorMap() {
 
 // node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
-  const { data, path: path3, errorMaps, issueData } = params;
-  const fullPath = [...path3, ...issueData.path || []];
+  const { data, path: path4, errorMaps, issueData } = params;
+  const fullPath = [...path4, ...issueData.path || []];
   const fullIssue = {
     ...issueData,
     path: fullPath
@@ -7480,11 +7480,11 @@ var errorUtil;
 
 // node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
-  constructor(parent, value, path3, key) {
+  constructor(parent, value, path4, key) {
     this._cachedPath = [];
     this.parent = parent;
     this.data = value;
-    this._path = path3;
+    this._path = path4;
     this._key = key;
   }
   get path() {
@@ -11122,10 +11122,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path3) {
-  if (!path3)
+function getElementAtPath(obj, path4) {
+  if (!path4)
     return obj;
-  return path3.reduce((acc, key) => acc?.[key], obj);
+  return path4.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -11445,11 +11445,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path3, issues) {
+function prefixIssues(path4, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path3);
+    iss.path.unshift(path4);
     return iss;
   });
 }
@@ -18500,6 +18500,7 @@ async function runKimi(inv, ctx) {
     command: ctx.binary ?? "kimi",
     argv,
     env,
+    cwd: inv.cwd,
     timeoutMs: inv.timeoutSeconds * 1e3,
     stdoutCapBytes: STDOUT_CAP_BYTES,
     stderrCapBytes: STDERR_CAP_BYTES
@@ -18696,6 +18697,501 @@ async function runKimiAnalyze(rawInput, ctx) {
     return errorEnvelope(outcome.error.code, outcome.error.message, outcome.error.details);
   }
   return textResultEnvelope(outcome.result);
+}
+
+// src/adapter/git-runner.ts
+var DEFAULT_GIT_TIMEOUT_MS = 3e4;
+var GIT_STDOUT_CAP_BYTES = 16 * 1024 * 1024;
+var GIT_STDERR_CAP_BYTES = 4 * 1024 * 1024;
+async function executeGit(opts) {
+  const env = buildSubprocessEnv({
+    parentEnv: opts.parentEnv ?? process.env,
+    pluginVersion: opts.pluginVersion ?? "git-runner"
+  });
+  const sub = await runSubprocess({
+    command: opts.binary ?? "git",
+    argv: ["-C", opts.cwd, ...opts.args],
+    env,
+    timeoutMs: opts.timeoutMs ?? DEFAULT_GIT_TIMEOUT_MS,
+    stdoutCapBytes: GIT_STDOUT_CAP_BYTES,
+    stderrCapBytes: GIT_STDERR_CAP_BYTES
+  });
+  return {
+    stdout: sub.stdout,
+    stderr: sub.stderr,
+    exitCode: sub.exitCode,
+    signal: sub.signal,
+    durationMs: sub.durationMs
+  };
+}
+
+// src/adapter/worktree-guard.ts
+var import_node_crypto = require("node:crypto");
+var import_node_fs2 = require("node:fs");
+var import_node_path3 = __toESM(require("node:path"), 1);
+
+// src/adapter/worktree-list.ts
+function parseWorktreeList(stdout) {
+  if (stdout.length === 0) return [];
+  const lines = stdout.split(/\r?\n/);
+  const out = [];
+  let current = null;
+  const flush = () => {
+    if (current !== null) {
+      out.push(current);
+      current = null;
+    }
+  };
+  for (const raw of lines) {
+    const line = raw.replace(/\r$/, "");
+    if (line === "") {
+      flush();
+      continue;
+    }
+    if (line.startsWith("worktree ")) {
+      flush();
+      current = {
+        path: line.slice("worktree ".length),
+        detached: false,
+        bare: false,
+        locked: false,
+        prunable: false
+      };
+      continue;
+    }
+    if (current === null) continue;
+    if (line.startsWith("HEAD ")) {
+      current.head = line.slice("HEAD ".length);
+    } else if (line.startsWith("branch ")) {
+      current.branch = line.slice("branch ".length);
+    } else if (line === "detached") {
+      current.detached = true;
+    } else if (line === "bare") {
+      current.bare = true;
+    } else if (line.startsWith("locked")) {
+      current.locked = true;
+    } else if (line.startsWith("prunable")) {
+      current.prunable = true;
+    }
+  }
+  flush();
+  return out;
+}
+
+// src/adapter/worktree-guard.ts
+var WorktreeValidationError = class extends Error {
+  code;
+  field;
+  cause;
+  constructor(code, message, extras = {}) {
+    super(message);
+    this.name = "WorktreeValidationError";
+    this.code = code;
+    this.field = extras.field;
+    this.cause = extras.cause;
+  }
+};
+async function validateWorktreeTarget(opts) {
+  const gitExec = opts._executeGit ?? executeGit;
+  const constraints = {
+    allowedRoots: opts.allowedRoots,
+    allowEphemeral: opts.allowEphemeral
+  };
+  let baseRepo;
+  try {
+    baseRepo = validatePath({ path: opts.baseRepo, field: "base_repo", ...constraints });
+  } catch (err) {
+    throw toWorktreeValidationError(err, "base_repo");
+  }
+  let worktree;
+  try {
+    worktree = validatePath({
+      path: opts.worktreePath,
+      field: "worktree_path",
+      ...constraints
+    });
+  } catch (err) {
+    throw toWorktreeValidationError(err, "worktree_path");
+  }
+  if (isSubpath(worktree.resolved, baseRepo.resolved) && worktree.resolved !== baseRepo.resolved) {
+    throw new WorktreeValidationError(
+      "inside_base_repo",
+      `worktree_path must not live under base_repo (got ${worktree.resolved} \u2282 ${baseRepo.resolved})`,
+      { field: "worktree_path" }
+    );
+  }
+  const revParse = await gitExec({
+    cwd: baseRepo.resolved,
+    args: ["rev-parse", "--git-dir"]
+  });
+  if (revParse.exitCode !== 0) {
+    throw new WorktreeValidationError(
+      "not_git_repo",
+      `base_repo is not a git repository: ${baseRepo.resolved}`,
+      { field: "base_repo" }
+    );
+  }
+  const list = await gitExec({
+    cwd: baseRepo.resolved,
+    args: ["worktree", "list", "--porcelain"]
+  });
+  if (list.exitCode !== 0) {
+    throw new WorktreeValidationError(
+      "worktree_list_failed",
+      `'git worktree list' failed: ${list.stderr.trim()}`,
+      { cause: list }
+    );
+  }
+  const entries = parseWorktreeList(list.stdout);
+  if (entries.length === 0) {
+    throw new WorktreeValidationError(
+      "worktree_list_failed",
+      "'git worktree list' returned no entries"
+    );
+  }
+  const mainWorktreePath = entries[0].path;
+  if (worktree.resolved === mainWorktreePath) {
+    throw new WorktreeValidationError(
+      "equals_main_worktree",
+      `worktree_path is the main worktree of base_repo (${mainWorktreePath})`,
+      { field: "worktree_path" }
+    );
+  }
+  return { baseRepo, worktree, mainWorktreePath };
+}
+function recheckWorktreeTarget(v) {
+  try {
+    recheckPath(v.baseRepo);
+    recheckPath(v.worktree);
+  } catch (err) {
+    throw toWorktreeValidationError(err);
+  }
+}
+async function prepareCreateWorktree(opts) {
+  const gitExec = opts._executeGit ?? executeGit;
+  const constraints = {
+    allowedRoots: opts.allowedRoots,
+    allowEphemeral: opts.allowEphemeral
+  };
+  let baseRepo;
+  try {
+    baseRepo = validatePath({ path: opts.baseRepo, field: "base_repo", ...constraints });
+  } catch (err) {
+    throw toWorktreeValidationError(err, "base_repo");
+  }
+  const wtPath = opts.worktreePath;
+  if (typeof wtPath !== "string" || wtPath.length === 0) {
+    throw new WorktreeValidationError("path_validation", "worktree_path is required", {
+      field: "worktree_path"
+    });
+  }
+  if (wtPath.includes(String.fromCharCode(0))) {
+    throw new WorktreeValidationError(
+      "path_validation",
+      "worktree_path must not contain NUL bytes",
+      { field: "worktree_path" }
+    );
+  }
+  if (!import_node_path3.default.isAbsolute(wtPath)) {
+    throw new WorktreeValidationError(
+      "path_validation",
+      "worktree_path must be an absolute path",
+      { field: "worktree_path" }
+    );
+  }
+  if ((0, import_node_fs2.existsSync)(wtPath)) {
+    throw new WorktreeValidationError(
+      "worktree_already_exists",
+      `worktree_path already exists: ${wtPath}`,
+      { field: "worktree_path" }
+    );
+  }
+  const revParse = await gitExec({ cwd: baseRepo.resolved, args: ["rev-parse", "--git-dir"] });
+  if (revParse.exitCode !== 0) {
+    throw new WorktreeValidationError(
+      "not_git_repo",
+      `base_repo is not a git repository: ${baseRepo.resolved}`,
+      { field: "base_repo" }
+    );
+  }
+  const branch = generateBranchName(opts.baseRef);
+  const add = await gitExec({
+    cwd: baseRepo.resolved,
+    args: ["worktree", "add", "-b", branch, wtPath, opts.baseRef]
+  });
+  if (add.exitCode !== 0) {
+    throw new WorktreeValidationError(
+      "worktree_add_failed",
+      `git worktree add failed: ${add.stderr.trim() || add.stdout.trim()}`,
+      { cause: add }
+    );
+  }
+  let validated;
+  try {
+    validated = await validateWorktreeTarget({
+      baseRepo: baseRepo.original,
+      worktreePath: wtPath,
+      allowedRoots: opts.allowedRoots,
+      allowEphemeral: opts.allowEphemeral,
+      _executeGit: gitExec
+    });
+  } catch (err) {
+    await runCleanup(gitExec, baseRepo.resolved, wtPath);
+    throw err;
+  }
+  let cleanedUp = false;
+  return {
+    validated,
+    branch,
+    createdByUs: true,
+    cleanup: async () => {
+      if (cleanedUp) return "removed";
+      cleanedUp = true;
+      return runCleanup(gitExec, baseRepo.resolved, wtPath);
+    }
+  };
+}
+async function finishExistingWorktreeChecks(opts) {
+  const gitExec = opts._executeGit ?? executeGit;
+  const v = opts.validated;
+  const list = await gitExec({
+    cwd: v.baseRepo.resolved,
+    args: ["worktree", "list", "--porcelain"]
+  });
+  if (list.exitCode !== 0) {
+    throw new WorktreeValidationError(
+      "worktree_list_failed",
+      `'git worktree list' failed: ${list.stderr.trim()}`,
+      { cause: list }
+    );
+  }
+  const entries = parseWorktreeList(list.stdout);
+  const matched = entries.find(
+    (e) => e.path === v.worktree.resolved
+  );
+  if (!matched) {
+    throw new WorktreeValidationError(
+      "worktree_not_registered",
+      `worktree_path is not a registered worktree of base_repo: ${v.worktree.resolved}`,
+      { field: "worktree_path" }
+    );
+  }
+  if (!opts.allowDirty) {
+    const status = await gitExec({
+      cwd: v.worktree.resolved,
+      args: ["status", "--porcelain"]
+    });
+    if (status.exitCode !== 0) {
+      throw new WorktreeValidationError(
+        "worktree_list_failed",
+        `'git status --porcelain' failed: ${status.stderr.trim()}`,
+        { cause: status }
+      );
+    }
+    if (status.stdout.trim().length > 0) {
+      throw new WorktreeValidationError(
+        "worktree_dirty",
+        "worktree has uncommitted changes; pass allow_dirty=true to override",
+        { field: "worktree_path" }
+      );
+    }
+  }
+  return { branch: matched.branch ?? null };
+}
+async function runCleanup(gitExec, baseRepo, worktreePath) {
+  try {
+    const r = await gitExec({
+      cwd: baseRepo,
+      args: ["worktree", "remove", "--force", worktreePath]
+    });
+    return r.exitCode === 0 ? "removed" : "cleanup_failed";
+  } catch {
+    return "cleanup_failed";
+  }
+}
+function generateBranchName(baseRef) {
+  const sha7 = (0, import_node_crypto.createHash)("sha1").update(baseRef).digest("hex").slice(0, 7);
+  return `kimi-impl-${sha7}-${Date.now()}`;
+}
+function isSubpath(child, parent) {
+  if (child === parent) return true;
+  const parentWithSep = parent.endsWith(import_node_path3.default.sep) ? parent : parent + import_node_path3.default.sep;
+  return child.startsWith(parentWithSep);
+}
+function toWorktreeValidationError(err, field) {
+  if (err instanceof WorktreeValidationError) return err;
+  if (err instanceof PathValidationError) {
+    const code = err.code === "toctou" ? "toctou" : "path_validation";
+    return new WorktreeValidationError(code, err.message, { field: field ?? err.field, cause: err });
+  }
+  return new WorktreeValidationError(
+    "path_validation",
+    err instanceof Error ? err.message : String(err),
+    { field, cause: err }
+  );
+}
+
+// src/tools/implement.ts
+var IMPLEMENT_DEFAULT_TIMEOUT_SECONDS = 600;
+var IMPLEMENT_MAX_TIMEOUT_SECONDS = 1200;
+var KimiImplementInputSchema = external_exports.object({
+  task: external_exports.string().min(1).max(5e4),
+  worktree_path: external_exports.string().min(1),
+  base_repo: external_exports.string().min(1),
+  base_ref: external_exports.string().min(1).default("HEAD"),
+  create_worktree: external_exports.boolean().default(true),
+  allow_dirty: external_exports.boolean().default(false),
+  model: external_exports.string().min(1).max(256).optional(),
+  timeout_seconds: external_exports.number().int().positive().max(IMPLEMENT_MAX_TIMEOUT_SECONDS).optional()
+}).strict();
+async function runKimiImplement(rawInput, ctx) {
+  const parsed = KimiImplementInputSchema.safeParse(rawInput);
+  if (!parsed.success) {
+    return errorEnvelope("validation_error", parsed.error.message, {
+      issues: parsed.error.issues
+    });
+  }
+  const input = parsed.data;
+  const gitExec = ctx._executeGit ?? executeGit;
+  const constraints = ctx.pathConstraints ?? {};
+  let prepared;
+  try {
+    prepared = input.create_worktree ? await asPrepared(
+      await prepareCreateWorktree({
+        baseRepo: input.base_repo,
+        worktreePath: input.worktree_path,
+        baseRef: input.base_ref,
+        allowedRoots: constraints.allowedRoots,
+        allowEphemeral: constraints.allowEphemeral,
+        _executeGit: gitExec
+      }),
+      { ownedByCaller: false }
+    ) : await prepareExisting(input, gitExec, constraints);
+  } catch (err) {
+    return worktreeErrorEnvelope(err);
+  }
+  const baseShaRes = await gitExec({
+    cwd: prepared.validated.worktree.resolved,
+    args: ["rev-parse", input.base_ref]
+  });
+  const baseSha = baseShaRes.exitCode === 0 ? baseShaRes.stdout.trim() : input.base_ref;
+  try {
+    recheckWorktreeTarget(prepared.validated);
+  } catch (err) {
+    await safeCleanup(prepared);
+    return worktreeErrorEnvelope(err);
+  }
+  const adapterCtx = {
+    parentEnv: ctx.parentEnv,
+    pluginVersion: ctx.pluginVersion,
+    binary: ctx.binary,
+    pathConstraints: ctx.pathConstraints,
+    _runSubprocess: ctx._runSubprocess
+  };
+  const outcome = await runKimiSafe(
+    {
+      prompt: input.task,
+      outputFormat: "text",
+      finalMessageOnly: true,
+      model: input.model,
+      timeoutSeconds: input.timeout_seconds ?? IMPLEMENT_DEFAULT_TIMEOUT_SECONDS,
+      cwd: prepared.validated.worktree.resolved
+    },
+    adapterCtx,
+    { authFailurePatterns: ctx.authFailurePatterns }
+  );
+  const capture = await captureChanges(
+    gitExec,
+    prepared.validated.worktree.resolved,
+    baseSha
+  );
+  const cleanupStatus = await safeCleanup(prepared);
+  if (!outcome.ok) {
+    const env = errorEnvelope(outcome.error.code, outcome.error.message, outcome.error.details);
+    env.structuredContent = {
+      ...env.structuredContent,
+      worktree_path: prepared.validated.worktree.resolved,
+      branch: prepared.branch,
+      cleanup_status: cleanupStatus
+    };
+    return env;
+  }
+  const r = outcome.result;
+  const structuredContent = {
+    worktree_path: prepared.validated.worktree.resolved,
+    branch: prepared.branch,
+    commit_sha: capture.commitSha,
+    diff: capture.diff,
+    files_changed: capture.filesChanged,
+    cleanup_status: cleanupStatus,
+    kimi_stdout_excerpt: excerpt(r.stdout, 2048),
+    session_id: r.sessionId,
+    exit_code: r.exitCode,
+    duration_ms: r.durationMs
+  };
+  return {
+    content: [{ type: "text", text: r.finalMessage }],
+    structuredContent
+  };
+}
+async function prepareExisting(input, gitExec, constraints) {
+  const validated = await validateWorktreeTarget({
+    baseRepo: input.base_repo,
+    worktreePath: input.worktree_path,
+    allowedRoots: constraints.allowedRoots,
+    allowEphemeral: constraints.allowEphemeral,
+    _executeGit: gitExec
+  });
+  const { branch } = await finishExistingWorktreeChecks({
+    validated,
+    allowDirty: input.allow_dirty,
+    _executeGit: gitExec
+  });
+  return {
+    validated,
+    branch,
+    ownedByCaller: true,
+    cleanup: async () => "left_in_place"
+  };
+}
+async function asPrepared(prep, extras) {
+  return { ...prep, ownedByCaller: extras.ownedByCaller };
+}
+async function safeCleanup(prep) {
+  try {
+    return await prep.cleanup();
+  } catch {
+    return "cleanup_failed";
+  }
+}
+async function captureChanges(gitExec, worktree, baseSha) {
+  const diff = await gitExec({ cwd: worktree, args: ["diff", baseSha] });
+  const names = await gitExec({ cwd: worktree, args: ["diff", "--name-only", baseSha] });
+  const headSha = await gitExec({ cwd: worktree, args: ["rev-parse", "HEAD"] });
+  const filesChanged = names.exitCode === 0 ? names.stdout.split(/\r?\n/).map((s) => s.trim()).filter((s) => s.length > 0) : [];
+  const commitSha = headSha.exitCode === 0 && headSha.stdout.trim() !== baseSha ? headSha.stdout.trim() : null;
+  return {
+    diff: diff.exitCode === 0 ? diff.stdout : "",
+    filesChanged,
+    commitSha
+  };
+}
+function excerpt(s, cap) {
+  if (Buffer.byteLength(s, "utf8") <= cap) return s;
+  const head = Buffer.from(s, "utf8").subarray(0, cap).toString("utf8");
+  return `${head}
+
+[truncated: excerpt exceeded ${cap} bytes]`;
+}
+function worktreeErrorEnvelope(err) {
+  if (err instanceof WorktreeValidationError) {
+    return errorEnvelope(err.code, err.message, { field: err.field });
+  }
+  return errorEnvelope(
+    "cli_exit_nonzero",
+    err instanceof Error ? err.message : String(err),
+    {}
+  );
 }
 
 // src/tools/query.ts
@@ -19076,6 +19572,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           }
         }
       }
+    },
+    {
+      name: "kimi_implement",
+      description: "Run a kimi task that edits code inside a disposable git worktree (never the main checkout). Refuses if worktree_path is the main worktree or lives inside base_repo. Default 600s timeout (cap 1200s). Returns the captured diff + files_changed; the caller decides whether to merge.",
+      inputSchema: {
+        type: "object",
+        required: ["task", "worktree_path", "base_repo"],
+        additionalProperties: false,
+        properties: {
+          task: { type: "string", minLength: 1, maxLength: 5e4 },
+          worktree_path: { type: "string", minLength: 1 },
+          base_repo: { type: "string", minLength: 1 },
+          base_ref: { type: "string", minLength: 1, default: "HEAD" },
+          create_worktree: { type: "boolean", default: true },
+          allow_dirty: { type: "boolean", default: false },
+          model: { type: "string", minLength: 1, maxLength: 256 },
+          timeout_seconds: { type: "integer", minimum: 1, maximum: 1200 }
+        }
+      }
     }
   ]
 }));
@@ -19114,6 +19629,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
     case "kimi_review": {
       const out = await runKimiReview(request.params.arguments ?? {}, {
+        parentEnv: process.env,
+        pluginVersion: PLUGIN_VERSION
+      });
+      return out;
+    }
+    case "kimi_implement": {
+      const out = await runKimiImplement(request.params.arguments ?? {}, {
         parentEnv: process.env,
         pluginVersion: PLUGIN_VERSION
       });

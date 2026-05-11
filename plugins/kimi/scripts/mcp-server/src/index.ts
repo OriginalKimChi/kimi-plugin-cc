@@ -5,6 +5,7 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { runKimiAnalyze } from "./tools/analyze.js";
+import { runKimiImplement } from "./tools/implement.js";
 import { runKimiQuery } from "./tools/query.js";
 import { runKimiResume } from "./tools/resume.js";
 import { runKimiReview } from "./tools/review.js";
@@ -121,6 +122,26 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
       },
     },
+    {
+      name: "kimi_implement",
+      description:
+        "Run a kimi task that edits code inside a disposable git worktree (never the main checkout). Refuses if worktree_path is the main worktree or lives inside base_repo. Default 600s timeout (cap 1200s). Returns the captured diff + files_changed; the caller decides whether to merge.",
+      inputSchema: {
+        type: "object",
+        required: ["task", "worktree_path", "base_repo"],
+        additionalProperties: false,
+        properties: {
+          task: { type: "string", minLength: 1, maxLength: 50000 },
+          worktree_path: { type: "string", minLength: 1 },
+          base_repo: { type: "string", minLength: 1 },
+          base_ref: { type: "string", minLength: 1, default: "HEAD" },
+          create_worktree: { type: "boolean", default: true },
+          allow_dirty: { type: "boolean", default: false },
+          model: { type: "string", minLength: 1, maxLength: 256 },
+          timeout_seconds: { type: "integer", minimum: 1, maximum: 1200 },
+        },
+      },
+    },
   ],
 }));
 
@@ -161,6 +182,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
     case "kimi_review": {
       const out = await runKimiReview(request.params.arguments ?? {}, {
+        parentEnv: process.env,
+        pluginVersion: PLUGIN_VERSION,
+      });
+      return out as unknown as { content: Array<{ type: "text"; text: string }> };
+    }
+    case "kimi_implement": {
+      const out = await runKimiImplement(request.params.arguments ?? {}, {
         parentEnv: process.env,
         pluginVersion: PLUGIN_VERSION,
       });
