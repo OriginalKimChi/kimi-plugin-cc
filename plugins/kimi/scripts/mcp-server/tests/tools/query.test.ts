@@ -86,6 +86,47 @@ describe("KimiQueryInputSchema", () => {
   it("rejects unknown top-level fields", () => {
     expect(KimiQueryInputSchema.safeParse({ prompt: "x", weird: true }).success).toBe(false);
   });
+
+  it("accepts output_format='stream-json'", () => {
+    expect(
+      KimiQueryInputSchema.safeParse({ prompt: "x", output_format: "stream-json" }).success,
+    ).toBe(true);
+  });
+
+  it("rejects unknown output_format value", () => {
+    expect(
+      KimiQueryInputSchema.safeParse({ prompt: "x", output_format: "yaml" }).success,
+    ).toBe(false);
+  });
+});
+
+describe("runKimiQuery — stream-json mode", () => {
+  it("passes outputFormat='stream-json' (no --quiet) and surfaces raw_events", async () => {
+    const UUID2 = "abcdef12-3456-7890-abcd-ef1234567890";
+    const stdout = [
+      `{"role":"user","content":"hi"}`,
+      `{"role":"assistant","content":"hello back"}`,
+      `To resume this session: kimi -r ${UUID2}`,
+      ``,
+    ].join("\n");
+    const { fn, calls } = fakeSubprocess({ stdout });
+
+    const out = await runKimiQuery(
+      { prompt: "hi", output_format: "stream-json" },
+      baseCtx({ _runSubprocess: fn }),
+    );
+
+    expect(out.isError).toBeFalsy();
+    expect(calls[0]!.argv).toContain("--print");
+    expect(calls[0]!.argv).toContain("--output-format");
+    expect(calls[0]!.argv).toContain("stream-json");
+    expect(calls[0]!.argv).not.toContain("--quiet");
+
+    const sc = out.structuredContent as Record<string, unknown>;
+    expect(Array.isArray(sc.raw_events)).toBe(true);
+    expect((sc.raw_events as unknown[]).length).toBe(2);
+    expect(sc.session_id).toBe(UUID2);
+  });
 });
 
 describe("runKimiQuery — success", () => {

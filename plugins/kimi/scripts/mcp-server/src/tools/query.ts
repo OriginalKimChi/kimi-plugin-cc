@@ -30,6 +30,7 @@ export const KimiQueryInputSchema = z
       .max(QUERY_MAX_TIMEOUT_SECONDS)
       .optional(),
     session_id: z.string().uuid().optional(),
+    output_format: z.enum(["text", "stream-json"]).optional(),
   })
   .strict();
 
@@ -64,11 +65,13 @@ export async function runKimiQuery(
     _runSubprocess: ctx._runSubprocess,
   };
 
+  const outputFormat = input.output_format ?? "text";
   const outcome = await runKimiSafe(
     {
       prompt: input.prompt,
-      outputFormat: "text",
-      finalMessageOnly: true,
+      outputFormat,
+      // --quiet alias requires text mode; stream-json must NOT pair with it.
+      finalMessageOnly: outputFormat === "text",
       model: input.model,
       workDir: input.work_dir,
       addDirs: input.add_dirs,

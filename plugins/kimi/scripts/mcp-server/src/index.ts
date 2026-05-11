@@ -33,7 +33,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "kimi_query",
       description:
-        "Run a single read-only kimi prompt and return the final assistant message. Default 120s timeout (cap 300s). Optional model, work_dir, add_dirs, max_steps_per_turn, session_id.",
+        "Run a single read-only kimi prompt and return the final assistant message. Default 120s timeout (cap 300s). Optional model, work_dir, add_dirs, max_steps_per_turn, session_id, output_format (set to 'stream-json' to also receive the full event stream in structuredContent.raw_events).",
       inputSchema: {
         type: "object",
         required: ["prompt"],
@@ -50,6 +50,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             pattern:
               "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
           },
+          output_format: { type: "string", enum: ["text", "stream-json"] },
         },
       },
     },
