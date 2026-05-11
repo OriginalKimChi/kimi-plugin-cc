@@ -11,7 +11,7 @@ import { runKimiResume } from "./tools/resume.js";
 import { runKimiReview } from "./tools/review.js";
 import { runStatusTool } from "./tools/status.js";
 
-const PLUGIN_VERSION = "0.0.1";
+const PLUGIN_VERSION = "0.1.0";
 
 const server = new Server(
   { name: "kimi", version: PLUGIN_VERSION },
@@ -74,13 +74,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           add_dirs: { type: "array", items: { type: "string" }, maxItems: 10 },
           max_steps_per_turn: { type: "integer", minimum: 1, maximum: 100 },
           timeout_seconds: { type: "integer", minimum: 1, maximum: 600 },
+          output_format: { type: "string", enum: ["text", "stream-json"] },
         },
       },
     },
     {
       name: "kimi_analyze",
       description:
-        "Run a kimi prompt focused on analysing a repo or code area and return the final assistant message. Read-only. Default 300s timeout (cap 600s). Same options as kimi_query.",
+        "Run a kimi prompt focused on analysing a repo or code area and return the final assistant message. Read-only. Default 300s timeout (cap 600s). Set output_format='stream-json' to also receive raw_events.",
       inputSchema: {
         type: "object",
         required: ["prompt"],
@@ -97,13 +98,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             pattern:
               "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
           },
+          output_format: { type: "string", enum: ["text", "stream-json"] },
         },
       },
     },
     {
       name: "kimi_review",
       description:
-        "Run a kimi prompt focused on reviewing a diff or branch and return the final assistant message. Read-only. Default 300s timeout (cap 600s). Same options as kimi_query.",
+        "Run a kimi prompt focused on reviewing a diff or branch and return the final assistant message. Read-only. Default 300s timeout (cap 600s). Set output_format='stream-json' to also receive raw_events.",
       inputSchema: {
         type: "object",
         required: ["prompt"],
@@ -120,6 +122,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             pattern:
               "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
           },
+          output_format: { type: "string", enum: ["text", "stream-json"] },
         },
       },
     },

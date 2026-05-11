@@ -34,7 +34,7 @@ function fakeProbe(over: Partial<CliProbeResult> = {}): CliProbeResult {
 function baseCtx(over: Partial<StatusContext> = {}): StatusContext {
   return {
     parentEnv: { KIMI_CODE_API_KEY: "sk-kc-OK" },
-    pluginVersion: "0.0.1",
+    pluginVersion: "0.1.0",
     pluginRoot: "/opt/plugin",
     binary: "kimi",
     _probe: async () => fakeProbe(),
@@ -47,7 +47,7 @@ describe("runStatusTool — happy path", () => {
     const payload = await runStatusTool(baseCtx());
 
     expect(payload.plugin).toBe("kimi");
-    expect(payload.version).toBe("0.0.1");
+    expect(payload.version).toBe("0.1.0");
     expect(payload.state).toBe("ok");
     expect(payload.node).toBe(process.version);
     expect(payload.plugin_root).toBe("/opt/plugin");

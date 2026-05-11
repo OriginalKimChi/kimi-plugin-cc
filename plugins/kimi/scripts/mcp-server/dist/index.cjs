@@ -18835,7 +18835,8 @@ var KimiAnalyzeInputSchema = external_exports.object({
   add_dirs: external_exports.array(external_exports.string()).max(10).optional(),
   max_steps_per_turn: external_exports.number().int().positive().max(100).optional(),
   timeout_seconds: external_exports.number().int().positive().max(ANALYZE_MAX_TIMEOUT_SECONDS).optional(),
-  session_id: external_exports.string().uuid().optional()
+  session_id: external_exports.string().uuid().optional(),
+  output_format: external_exports.enum(["text", "stream-json"]).optional()
 }).strict();
 async function runKimiAnalyze(rawInput, ctx) {
   const parsed = KimiAnalyzeInputSchema.safeParse(rawInput);
@@ -18852,11 +18853,12 @@ async function runKimiAnalyze(rawInput, ctx) {
     pathConstraints: ctx.pathConstraints,
     _runSubprocess: ctx._runSubprocess
   };
+  const outputFormat = input.output_format ?? "text";
   const outcome = await runKimiSafe(
     {
       prompt: input.prompt,
-      outputFormat: "text",
-      finalMessageOnly: true,
+      outputFormat,
+      finalMessageOnly: outputFormat === "text",
       model: input.model,
       workDir: input.work_dir,
       addDirs: input.add_dirs,
@@ -19429,7 +19431,8 @@ var KimiResumeInputSchema = external_exports.object({
   work_dir: external_exports.string().optional(),
   add_dirs: external_exports.array(external_exports.string()).max(10).optional(),
   max_steps_per_turn: external_exports.number().int().positive().max(100).optional(),
-  timeout_seconds: external_exports.number().int().positive().max(RESUME_MAX_TIMEOUT_SECONDS).optional()
+  timeout_seconds: external_exports.number().int().positive().max(RESUME_MAX_TIMEOUT_SECONDS).optional(),
+  output_format: external_exports.enum(["text", "stream-json"]).optional()
 }).strict();
 async function runKimiResume(rawInput, ctx) {
   const parsed = KimiResumeInputSchema.safeParse(rawInput);
@@ -19446,11 +19449,12 @@ async function runKimiResume(rawInput, ctx) {
     pathConstraints: ctx.pathConstraints,
     _runSubprocess: ctx._runSubprocess
   };
+  const outputFormat = input.output_format ?? "text";
   const outcome = await runKimiSafe(
     {
       prompt: input.prompt,
-      outputFormat: "text",
-      finalMessageOnly: true,
+      outputFormat,
+      finalMessageOnly: outputFormat === "text",
       model: input.model,
       workDir: input.work_dir,
       addDirs: input.add_dirs,
@@ -19477,7 +19481,8 @@ var KimiReviewInputSchema = external_exports.object({
   add_dirs: external_exports.array(external_exports.string()).max(10).optional(),
   max_steps_per_turn: external_exports.number().int().positive().max(100).optional(),
   timeout_seconds: external_exports.number().int().positive().max(REVIEW_MAX_TIMEOUT_SECONDS).optional(),
-  session_id: external_exports.string().uuid().optional()
+  session_id: external_exports.string().uuid().optional(),
+  output_format: external_exports.enum(["text", "stream-json"]).optional()
 }).strict();
 async function runKimiReview(rawInput, ctx) {
   const parsed = KimiReviewInputSchema.safeParse(rawInput);
@@ -19494,11 +19499,12 @@ async function runKimiReview(rawInput, ctx) {
     pathConstraints: ctx.pathConstraints,
     _runSubprocess: ctx._runSubprocess
   };
+  const outputFormat = input.output_format ?? "text";
   const outcome = await runKimiSafe(
     {
       prompt: input.prompt,
-      outputFormat: "text",
-      finalMessageOnly: true,
+      outputFormat,
+      finalMessageOnly: outputFormat === "text",
       model: input.model,
       workDir: input.work_dir,
       addDirs: input.add_dirs,
@@ -19660,7 +19666,7 @@ function deriveState(auth, probe) {
 }
 
 // src/index.ts
-var PLUGIN_VERSION = "0.0.1";
+var PLUGIN_VERSION = "0.1.0";
 var server = new Server(
   { name: "kimi", version: PLUGIN_VERSION },
   { capabilities: { tools: {} } }
@@ -19715,13 +19721,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           work_dir: { type: "string" },
           add_dirs: { type: "array", items: { type: "string" }, maxItems: 10 },
           max_steps_per_turn: { type: "integer", minimum: 1, maximum: 100 },
-          timeout_seconds: { type: "integer", minimum: 1, maximum: 600 }
+          timeout_seconds: { type: "integer", minimum: 1, maximum: 600 },
+          output_format: { type: "string", enum: ["text", "stream-json"] }
         }
       }
     },
     {
       name: "kimi_analyze",
-      description: "Run a kimi prompt focused on analysing a repo or code area and return the final assistant message. Read-only. Default 300s timeout (cap 600s). Same options as kimi_query.",
+      description: "Run a kimi prompt focused on analysing a repo or code area and return the final assistant message. Read-only. Default 300s timeout (cap 600s). Set output_format='stream-json' to also receive raw_events.",
       inputSchema: {
         type: "object",
         required: ["prompt"],
@@ -19736,13 +19743,14 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           session_id: {
             type: "string",
             pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-          }
+          },
+          output_format: { type: "string", enum: ["text", "stream-json"] }
         }
       }
     },
     {
       name: "kimi_review",
-      description: "Run a kimi prompt focused on reviewing a diff or branch and return the final assistant message. Read-only. Default 300s timeout (cap 600s). Same options as kimi_query.",
+      description: "Run a kimi prompt focused on reviewing a diff or branch and return the final assistant message. Read-only. Default 300s timeout (cap 600s). Set output_format='stream-json' to also receive raw_events.",
       inputSchema: {
         type: "object",
         required: ["prompt"],
@@ -19757,7 +19765,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
           session_id: {
             type: "string",
             pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-          }
+          },
+          output_format: { type: "string", enum: ["text", "stream-json"] }
         }
       }
     },
