@@ -1,0 +1,9 @@
+# captured-at: 2026-05-11T11:05:02Z
+# kimi --version
+kimi, version 1.41.0
+
+# kimi info (json if available)
+kimi-cli version: 1.41.0
+agent spec versions: 1
+wire protocol: 1.9
+python version: 3.13.13

@@ -1,100 +1,105 @@
-# P0-E — Auth bootstrap UX
+# P0-E — Auth bootstrap UX (revised after P0-F)
 
-## Problem
+> **Revision note (2026-05-11):** The original P0-E assumed the `kimi` CLI reads `KIMI_CODE_API_KEY` / `MOONSHOT_API_KEY` env vars. P0-F probing showed this is **false** for kimi-cli 1.41.0 — auth lives in `~/.kimi/credentials/` (OAuth) and the `[providers."managed:kimi-code"].api_key` field of `~/.kimi/config.toml`. The flow below replaces the original.
 
-The kimi CLI authenticates by reading an API key. The legacy flow is:
+## Authoritative auth surface (per P0-F)
 
-1. Run `kimi` interactively on first install.
-2. CLI prompts for the API key, stores it (typically `~/.config/kimi-cli/` or similar).
-3. Subsequent CLI invocations read the stored key.
+1. **OAuth (default, recommended)** — user runs `kimi login` once in a terminal. CLI saves a token to `~/.kimi/credentials/kimi-code.json` and reuses it for all future invocations.
+2. **API key (alternative)** — user pastes a key into the `api_key` field of `~/.kimi/config.toml`. The CLI reads it on each invocation.
+3. **No env-var path.** Confirmed empirically.
 
-This works for a human at a terminal but **breaks for a stdio MCP server**: Claude Code spawns the server, the server spawns `kimi`, the CLI tries to prompt → there's no terminal, the call hangs, and Claude Code eventually times out the tool.
+Two CLI options let us inject auth without mutating the user's main config:
+- `--config <TOML/JSON-string>` — small overrides inline
+- `--config-file <FILE>` — replacement config file
 
-We must replace the interactive bootstrap with a non-interactive flow that:
+## Recommended UX for our plugin
 
-- Asks the user for keys at install time (via Claude Code's `userConfig`).
-- Stores them securely (keychain, via `sensitive: true`).
-- Passes them to the kimi CLI as environment variables on every invocation.
-- Handles two keys (Kimi Code recommended, Moonshot fallback) cleanly.
-- Surfaces clear errors when both are missing.
+The plugin **does not handle auth itself**. It assumes the user has already authenticated `kimi` on this machine. Our role is:
 
-## Two key types — user's directive
+1. At install time, **point the user at `kimi login`** via plugin description and post-install message.
+2. At every tool call, before spawning the CLI, **probe auth state once and cache** (TTL 60 s). If not authed → return a structured error with the remediation command.
+3. Provide an optional override path for advanced users: `userConfig.kimi_code_api_key` (sensitive). When set, the plugin writes a private one-call config to a 0600 temp file and invokes `kimi --config-file <tempfile>`.
 
-| Key | Source | Role |
-|---|---|---|
-| **`kimi_code_api_key`** | kimi.moonshot.cn — Kimi Code product key | **Recommended.** Used first. |
-| **`moonshot_api_key`** | platform.moonshot.cn — generic Moonshot platform key | Fallback if Kimi Code key is missing. |
-
-If both are set, **Kimi Code wins**. If neither is set, all tools except `kimi_status` return a structured error (no CLI call).
-
-## Manifest (already in place from P0-B)
+### Manifest (revised `userConfig`)
 
 ```jsonc
 "userConfig": {
   "kimi_code_api_key": {
     "type": "string",
-    "title": "Kimi Code API key",
-    "description": "Recommended. Get one at kimi.moonshot.cn. Stored in the OS keychain.",
+    "title": "Kimi Code API key (optional override)",
+    "description": "Leave empty if you ran `kimi login` already (recommended). Only set this if you prefer a static API key over OAuth. Stored in OS keychain.",
     "sensitive": true,
     "required": false
   },
   "moonshot_api_key": {
     "type": "string",
     "title": "Moonshot API key (fallback)",
-    "description": "Alternative. Generic Moonshot platform API key. Stored in the OS keychain.",
+    "description": "Alternative if Kimi Code key unavailable. Stored in OS keychain.",
     "sensitive": true,
     "required": false
   }
 }
 ```
 
-Both `required: false` so the user can install and run `kimi_status` to verify wiring before committing a key.
+Both keys are still optional. The plugin works on a freshly-`kimi login`'d machine with both keys empty.
 
-## Runtime flow
+## Auth probe (every cold start, cached 60 s)
 
+```ts
+async function probeAuth(): Promise<AuthState> {
+  // 1. If user_config.kimi_code_api_key is set → state = "user_config_override"
+  // 2. Else if ~/.kimi/credentials/kimi-code.json exists and is readable → state = "oauth"
+  // 3. Else if ~/.kimi/config.toml has non-empty api_key for managed:kimi-code → state = "config_file"
+  // 4. Else → state = "missing"
+}
 ```
-1.  Claude Code installs the plugin.
-2.  Claude Code prompts the user for `kimi_code_api_key` and `moonshot_api_key` (sensitive → keychain).
-3.  When Claude Code spawns the MCP server, it injects the two values as env vars per `mcpServers.env`.
-4.  The MCP server, on startup, picks the preferred key:
-       preferred = KIMI_CODE_API_KEY ?? MOONSHOT_API_KEY ?? null
-5.  For each subprocess spawn (per P0-D allowlist):
-       - If preferred is null and the tool is anything other than `kimi_status`, return:
-           { error: "auth_missing", message: "...", remediation_url: "..." }
-       - Else, pass both KIMI_CODE_API_KEY and MOONSHOT_API_KEY through to the kimi CLI.
-6.  The kimi CLI reads whichever env var it expects. If the CLI only knows one env var name, the server maps:
-       - prefer KIMI_CODE_API_KEY into whatever env var the CLI actually reads (e.g., MOONSHOT_API_KEY=<kimi_code_value>)
-       - the exact CLI-side env var name is captured in the P0-F golden-transcript pass and locked into the adapter (P0-G).
+
+`kimi_status` returns this state directly. All other tools refuse to spawn when `state === "missing"` and return:
+
+```json
+{
+  "error": "auth_missing",
+  "message": "kimi CLI is not authenticated on this machine.",
+  "remediation": "Run `kimi login` in a terminal, then retry. Or set kimi_code_api_key in the plugin's userConfig."
+}
 ```
+
+## API key injection (when `kimi_code_api_key` is set in userConfig)
+
+Per call:
+
+1. Write a temp file `${os.tmpdir()}/kimi-plugin-<random>.toml` with mode `0600`:
+   ```toml
+   [providers."managed:kimi-code"]
+   api_key = "<user_config.kimi_code_api_key>"
+   ```
+2. Spawn `kimi --config-file <tempfile> --quiet --max-steps-per-turn N <prompt>`.
+3. Unconditionally `fs.unlink` the temp file in a `finally` block. Log only the file path, never the contents.
+4. The temp file MUST NOT live in `~/.kimi/`; that's the user's own config namespace.
+
+`moonshot_api_key` behaves the same but the temp config has the key inside the appropriate Moonshot provider stanza. Confirm the stanza shape by reading the user's existing `~/.kimi/config.toml` once at plugin startup. If the shape can't be inferred, fall back to OAuth-only and warn.
+
+## What changed from the original P0-E
+
+| Original assumption | Replaced by |
+|---|---|
+| CLI reads `KIMI_CODE_API_KEY` env | CLI reads `~/.kimi/credentials/` (OAuth) or `~/.kimi/config.toml` `api_key` field |
+| userConfig is the primary auth path | OAuth via `kimi login` is the primary auth path; userConfig is an override |
+| Env injection | `--config-file <tempfile>` injection |
+| Server forwards env keys to subprocess | Server creates a 0600 temp config file, invokes with `--config-file`, unlinks immediately after |
 
 ## What we explicitly do NOT do
 
+- **No silent fallback Kimi-Code → Moonshot.** If the user sets Kimi-Code and it fails, return that failure verbatim; don't try Moonshot.
+- **No mutation of `~/.kimi/config.toml`.** That's the user's namespace.
+- **No reading of the user's stored OAuth token.** We don't need to — we let the CLI handle that.
 - **No interactive prompting from the MCP server.** Ever.
-- **No `kimi auth login` subprocess call during plugin startup.** The CLI may store a key in `~/.config/kimi-cli/`, but we ignore that path entirely and rely only on env vars.
-- **No fallback to reading the existing kimi-cli config file.** That's the legacy install's storage and we don't want our plugin's behavior to drift based on it.
-- **No env var passthrough beyond the two API keys.** See P0-D allowlist.
-
-## Edge cases
-
-| Case | Behavior |
-|---|---|
-| User installs plugin, skips both prompts | `kimi_status` returns ok with `preferred: "none"`. Other tools return `auth_missing` error. |
-| User updates one key via Claude Code | Server restart picks up new value (Claude Code reinjects env on server restart). |
-| Key is invalid (kimi CLI returns auth error) | Server returns the kimi CLI's auth error verbatim, prefixed with `auth_invalid:`. Logs key fingerprint (first 4 chars + length), never the full key. |
-| Kimi Code key set, but call fails with auth error | Server does NOT auto-fall-back to Moonshot key (silent fallback hides which key is broken). User must clear Kimi Code key in `userConfig` to use Moonshot. |
-| Both keys set, both invalid | Server reports both attempts and which one was tried first (Kimi Code). |
-
-## Open questions (resolve in P0-F when probing the CLI)
-
-1. What env var name does the `kimi` CLI actually read? `KIMI_API_KEY`? `MOONSHOT_API_KEY`? Different per subcommand? — captured in golden transcript.
-2. Does the CLI have a `--api-key` flag that bypasses env entirely? If so, prefer flag over env to avoid leaking the key into the CLI's child processes.
-3. Is there a way to ask the CLI "is the key valid?" without burning a real model call? — needed for `kimi_status` to optionally report `auth_valid: true|false`.
 
 ## Test cases (TDD)
 
-- Both env vars unset, call `kimi_query` → returns `auth_missing` error, never spawns subprocess.
-- Both env vars unset, call `kimi_status` → returns ok with `preferred: "none"`.
-- Only `MOONSHOT_API_KEY` set → `preferred: "moonshot"`, subprocess receives env.
-- Both set → `preferred: "kimi_code"`, both env vars are forwarded to subprocess.
-- Invalid key, CLI returns auth error → server returns `auth_invalid:<cli message>`.
-- Server logs an error → API key value is replaced with `***REDACTED***` (key length and first 4 chars logged separately for debugging).
+- ~/.kimi/credentials/kimi-code.json exists, no userConfig keys → probe = `oauth`; all tools run.
+- credentials file missing, config.toml api_key empty, no userConfig → probe = `missing`; non-status tools error out.
+- userConfig.kimi_code_api_key set, OAuth file missing → probe = `user_config_override`; temp config file written 0600 and unlinked after call.
+- Temp config file leaks (process crash) → next startup detects orphans in tmpdir matching `kimi-plugin-*.toml` and deletes any older than 1 minute.
+- Both userConfig keys set → kimi_code wins (no silent fallback).
+- userConfig key contains `\n` or NUL → reject at validation, never write to disk.

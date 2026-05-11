@@ -1,0 +1,171 @@
+                                                                                
+ Usage: kimi [OPTIONS] COMMAND [ARGS]...                                        
+                                                                                
+ Kimi, your next CLI agent.                                                     
+                                                                                
+╭─ Options ────────────────────────────────────────────────────────────────────╮
+│ --version         -V                                       Show version and  │
+│                                                            exit.             │
+│ --verbose                                                  Print verbose     │
+│                                                            information.      │
+│                                                            Default: no.      │
+│ --debug                                                    Log debug         │
+│                                                            information.      │
+│                                                            Default: no.      │
+│ --work-dir        -w                      DIRECTORY        Working directory │
+│                                                            for the agent.    │
+│                                                            Default: current  │
+│                                                            directory.        │
+│ --add-dir                                 DIRECTORY        Add an additional │
+│                                                            directory to the  │
+│                                                            workspace scope.  │
+│                                                            Can be specified  │
+│                                                            multiple times.   │
+│ --session,--res…  -S,-r                   TEXT             Resume a session. │
+│                                                            With ID: resume   │
+│                                                            that session.     │
+│                                                            Without ID:       │
+│                                                            interactively     │
+│                                                            pick a session.   │
+│ --continue        -C                                       Continue the      │
+│                                                            previous session  │
+│                                                            for the working   │
+│                                                            directory.        │
+│                                                            Default: no.      │
+│ --config                                  TEXT             Config TOML/JSON  │
+│                                                            string to load.   │
+│                                                            Default: none.    │
+│ --config-file                             FILE             Config TOML/JSON  │
+│                                                            file to load.     │
+│                                                            Default:          │
+│                                                            ~/.kimi/config.t… │
+│ --model           -m                      TEXT             LLM model to use. │
+│                                                            Default: default  │
+│                                                            model set in      │
+│                                                            config file.      │
+│ --thinking               --no-thinking                     Enable thinking   │
+│                                                            mode. Default:    │
+│                                                            default thinking  │
+│                                                            mode set in       │
+│                                                            config file.      │
+│ --yolo,--yes,--…  -y                                       Automatically     │
+│                                                            approve all       │
+│                                                            actions. Default: │
+│                                                            no.               │
+│ --plan                                                     Start in plan     │
+│                                                            mode. Default:    │
+│                                                            no.               │
+│ --afk                                                      Run in afk        │
+│                                                            (away-from-keybo… │
+│                                                            mode: no user is  │
+│                                                            present,          │
+│                                                            AskUserQuestion   │
+│                                                            is                │
+│                                                            auto-dismissed,   │
+│                                                            and tool calls    │
+│                                                            are               │
+│                                                            auto-approved.    │
+│                                                            Default: no.      │
+│ --prompt,--comm…  -p,-c                   TEXT             User prompt to    │
+│                                                            the agent.        │
+│                                                            Default: prompt   │
+│                                                            interactively.    │
+│ --print                                                    Run in print mode │
+│                                                            (non-interactive… │
+│                                                            Print mode        │
+│                                                            auto-dismisses    │
+│                                                            AskUserQuestion   │
+│                                                            and auto-approves │
+│                                                            tool calls for    │
+│                                                            this invocation.  │
+│ --acp                                                      (Deprecated, use  │
+│                                                            `kimi acp`        │
+│                                                            instead) Run as   │
+│                                                            ACP server.       │
+│ --wire                                                     Run as Wire       │
+│                                                            server            │
+│                                                            (experimental).   │
+│ --input-format                            [text|stream-js  Input format to   │
+│                                           on]              use. Must be used │
+│                                                            with `--print`    │
+│                                                            and the input     │
+│                                                            must be piped in  │
+│                                                            via stdin.        │
+│                                                            Default: text.    │
+│ --output-format                           [text|stream-js  Output format to  │
+│                                           on]              use. Must be used │
+│                                                            with `--print`.   │
+│                                                            Default: text.    │
+│ --final-message…                                           Only print the    │
+│                                                            final assistant   │
+│                                                            message (print    │
+│                                                            UI).              │
+│ --quiet                                                    Alias for         │
+│                                                            `--print          │
+│                                                            --output-format   │
+│                                                            text              │
+│                                                            --final-message-… │
+│ --agent                                   [default|okabe]  Builtin agent     │
+│                                                            specification to  │
+│                                                            use. Default:     │
+│                                                            builtin default   │
+│                                                            agent.            │
+│ --agent-file                              FILE             Custom agent      │
+│                                                            specification     │
+│                                                            file. Default:    │
+│                                                            builtin default   │
+│                                                            agent.            │
+│ --mcp-config-fi…                          FILE             MCP config file   │
+│                                                            to load. Add this │
+│                                                            option multiple   │
+│                                                            times to specify  │
+│                                                            multiple MCP      │
+│                                                            configs. Default: │
+│                                                            none.             │
+│ --mcp-config                              TEXT             MCP config JSON   │
+│                                                            to load. Add this │
+│                                                            option multiple   │
+│                                                            times to specify  │
+│                                                            multiple MCP      │
+│                                                            configs. Default: │
+│                                                            none.             │
+│ --skills-dir                              DIRECTORY        Custom skills     │
+│                                                            directories       │
+│                                                            (repeatable).     │
+│                                                            Overrides default │
+│                                                            discovery.        │
+│ --max-steps-per…                          INTEGER RANGE    Maximum number of │
+│                                           [x>=1]           steps in one      │
+│                                                            turn. Default:    │
+│                                                            from config.      │
+│ --max-retries-p…                          INTEGER RANGE    Maximum number of │
+│                                           [x>=1]           retries in one    │
+│                                                            step. Default:    │
+│                                                            from config.      │
+│ --max-ralph-ite…                          INTEGER RANGE    Extra iterations  │
+│                                           [x>=-1]          after the first   │
+│                                                            turn in Ralph     │
+│                                                            mode. Use -1 for  │
+│                                                            unlimited.        │
+│                                                            Default: from     │
+│                                                            config.           │
+│ --help            -h                                       Show this message │
+│                                                            and exit.         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ───────────────────────────────────────────────────────────────────╮
+│ login    Login to your Kimi account.                                         │
+│ logout   Logout from your Kimi account.                                      │
+│ term     Run Toad TUI backed by Kimi Code CLI ACP server.                    │
+│ acp      Run Kimi Code CLI ACP server.                                       │
+│ info     Show version and protocol information.                              │
+│ export   Export session data.                                                │
+│ mcp      Manage MCP server configurations.                                   │
+│ plugin   Manage plugins.                                                     │
+│ vis      Run Kimi Agent Tracing Visualizer.                                  │
+│ web      Run Kimi Code CLI web interface.                                    │
+╰──────────────────────────────────────────────────────────────────────────────╯
+                                                                                
+ Documentation:        https://moonshotai.github.io/kimi-cli/                   
+ LLM friendly version: https://moonshotai.github.io/kimi-cli/llms.txt           
+                                                                                
+
