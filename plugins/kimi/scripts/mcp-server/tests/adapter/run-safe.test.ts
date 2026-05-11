@@ -226,7 +226,11 @@ describe("runKimiSafe — caught errors", () => {
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) {
       expect(outcome.error.code).toBe("cli_not_found");
-      expect(outcome.error.details.argv_redacted).toEqual(["--quiet", "--prompt", "hello"]);
+      // env-auth path now injects a temp --config-file too; assert the key
+      // pieces are present without pinning the temp path.
+      expect(outcome.error.details.argv_redacted).toEqual(
+        expect.arrayContaining(["--quiet", "--prompt", "hello"]),
+      );
     }
   });
 
@@ -240,7 +244,9 @@ describe("runKimiSafe — caught errors", () => {
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) {
       expect(outcome.error.code).toBe("cli_exit_nonzero");
-      expect(outcome.error.details.argv_redacted).toEqual(["--quiet", "--prompt", "hi"]);
+      expect(outcome.error.details.argv_redacted).toEqual(
+        expect.arrayContaining(["--quiet", "--prompt", "hi"]),
+      );
     }
   });
 

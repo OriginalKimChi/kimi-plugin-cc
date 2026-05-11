@@ -7,6 +7,7 @@ import {
 } from "./errors.js";
 import { PathValidationError } from "./path-validator.js";
 import { runKimi, type KimiResult, type RunKimiContext, type RunKimiInvocation } from "./runner.js";
+import { writeTempConfig, type TempConfigHandle } from "./temp-config.js";
 
 export interface KimiSuccess {
   ok: true;
@@ -43,24 +44,63 @@ export async function runKimiSafe(
   }
 
   const secrets = collectSecrets(ctx.parentEnv);
-  const plannedArgv = planArgv(inv);
 
-  let result: KimiResult;
-  try {
-    result = await runKimi(inv, ctx);
-  } catch (err) {
-    return { ok: false, error: toKimiError(err, plannedArgv, secrets) };
+  // env-based auth: kimi-cli does NOT read KIMI_CODE_API_KEY env. Inject the
+  // key via a 0600 temp config-file and pass --config-file to the subprocess.
+  // Always cleaned up in finally, regardless of success/failure.
+  let tempConfig: TempConfigHandle | null = null;
+  let effectiveInv: RunKimiInvocation = inv;
+  let effectiveCtx: RunKimiContext = ctx;
+  if (auth.state === "env" && auth.source !== null) {
+    const apiKey =
+      auth.source === "moonshot"
+        ? ctx.parentEnv.MOONSHOT_API_KEY
+        : ctx.parentEnv.KIMI_CODE_API_KEY;
+    if (typeof apiKey === "string" && apiKey.length > 0) {
+      try {
+        tempConfig = writeTempConfig({ apiKey, source: auth.source });
+      } catch (err) {
+        return {
+          ok: false,
+          error: new KimiError(
+            "auth_missing",
+            `cannot inject API key: ${err instanceof Error ? err.message : String(err)}`,
+            emptyDetails(),
+          ),
+        };
+      }
+      effectiveInv = { ...inv, configFile: tempConfig.filePath };
+      effectiveCtx = {
+        ...ctx,
+        // Our temp config lives under os.tmpdir() (ephemeral). Allow it through
+        // path-validator without loosening the user's other path constraints.
+        pathConstraints: { ...(ctx.pathConstraints ?? {}), allowEphemeral: true },
+      };
+    }
   }
 
-  const classifyCtx: ClassifyContext = {
-    argv: plannedArgv,
-    secrets,
-    outputFormat: inv.outputFormat,
-    authFailurePatterns: opts.authFailurePatterns,
-  };
-  const classified = classifyKimiResult(result, classifyCtx);
-  if (classified !== null) return { ok: false, error: classified };
-  return { ok: true, result };
+  const plannedArgv = planArgv(effectiveInv);
+
+  try {
+    let result: KimiResult;
+    try {
+      result = await runKimi(effectiveInv, effectiveCtx);
+    } catch (err) {
+      return { ok: false, error: toKimiError(err, plannedArgv, secrets) };
+    }
+
+    const classifyCtx: ClassifyContext = {
+      argv: plannedArgv,
+      secrets,
+      outputFormat: inv.outputFormat,
+      authFailurePatterns: opts.authFailurePatterns,
+    };
+    const classified = classifyKimiResult(result, classifyCtx);
+    if (classified !== null) return { ok: false, error: classified };
+    return { ok: true, result };
+  } finally {
+    if (tempConfig) await tempConfig.cleanup();
+  }
 }
 
 function planArgv(inv: RunKimiInvocation): string[] {
