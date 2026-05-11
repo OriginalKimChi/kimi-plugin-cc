@@ -26,7 +26,7 @@ function baseResult(over: Partial<KimiResult> = {}): KimiResult {
 
 function baseCtx(over: Partial<ClassifyContext> = {}): ClassifyContext {
   return {
-    argv: ["--quiet", "hello"],
+    argv: ["--quiet", "--prompt", "hello"],
     secrets: [],
     outputFormat: "text",
     ...over,
@@ -38,14 +38,14 @@ describe("KimiError", () => {
     const err = new KimiError("timeout", "kill ladder fired", {
       stdout_excerpt: "partial",
       stderr_excerpt: "",
-      argv_redacted: ["--quiet", "hello"],
+      argv_redacted: ["--quiet", "--prompt", "hello"],
       duration_ms: 12345,
     });
     expect(err).toBeInstanceOf(Error);
     expect(err.code).toBe("timeout");
     expect(err.message).toBe("kill ladder fired");
     expect(err.details.duration_ms).toBe(12345);
-    expect(err.details.argv_redacted).toEqual(["--quiet", "hello"]);
+    expect(err.details.argv_redacted).toEqual(["--quiet", "--prompt", "hello"]);
   });
 });
 

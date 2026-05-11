@@ -6,6 +6,19 @@ export interface ParsedTextStdout {
 
 const SESSION_LINE = /^[ \t]*To resume this session: kimi -r ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[ \t\r]*$/gm;
 
+/** Extract the trailing session UUID from arbitrary text. Used to find the
+ *  marker on stderr when kimi --quiet writes the assistant message to stdout
+ *  but the "To resume this session: kimi -r <uuid>" line to stderr (observed
+ *  in kimi-cli 1.41.0). */
+export function extractSessionId(input: string): string | null {
+  if (input.length === 0) return null;
+  SESSION_LINE.lastIndex = 0;
+  let last: RegExpExecArray | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = SESSION_LINE.exec(input)) !== null) last = m;
+  return last ? (last[1] ?? null) : null;
+}
+
 export function parseTextStdout(stdout: string): ParsedTextStdout {
   if (stdout.length === 0) {
     return { finalMessage: "", sessionId: null, trailingMarkerMissing: true };

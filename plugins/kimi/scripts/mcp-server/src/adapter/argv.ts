@@ -51,6 +51,8 @@ export function buildArgv(inv: KimiInvocation): string[] {
   if (inv.noThinking) argv.push("--no-thinking");
   if (inv.configFile) argv.push("--config-file", inv.configFile);
 
-  argv.push(inv.prompt);
+  // kimi 1.41 takes the prompt via --prompt; passing it as a positional makes
+  // the CLI treat it as a subcommand name. See P0-F probe (corrected 2026-05-11).
+  argv.push("--prompt", inv.prompt);
   return argv;
 }

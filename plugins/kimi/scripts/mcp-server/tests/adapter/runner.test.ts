@@ -96,6 +96,7 @@ describe("runKimi — text mode", () => {
         work,
         "-m",
         "kimi-mocha",
+        "--prompt",
         "describe this repo",
       ]);
       expect(opts.env.KIMI_PLUGIN_VERSION).toBe("1.2.3");

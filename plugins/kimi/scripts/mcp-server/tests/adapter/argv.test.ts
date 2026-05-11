@@ -13,7 +13,7 @@ function base(over: Partial<KimiInvocation> = {}): KimiInvocation {
 
 describe("buildArgv", () => {
   it("emits --quiet for text + finalMessageOnly", () => {
-    expect(buildArgv(base())).toEqual(["--quiet", "hello"]);
+    expect(buildArgv(base())).toEqual(["--quiet", "--prompt", "hello"]);
   });
 
   it("uses --print --output-format text when finalMessageOnly is false", () => {
@@ -21,6 +21,7 @@ describe("buildArgv", () => {
       "--print",
       "--output-format",
       "text",
+      "--prompt",
       "hello",
     ]);
   });
@@ -30,13 +31,14 @@ describe("buildArgv", () => {
       "--print",
       "--output-format",
       "stream-json",
+      "--prompt",
       "hello",
     ]);
   });
 
   it("adds --work-dir before the prompt", () => {
     const argv = buildArgv(base({ workDir: "/abs/proj" }));
-    expect(argv).toEqual(["--quiet", "--work-dir", "/abs/proj", "hello"]);
+    expect(argv).toEqual(["--quiet", "--work-dir", "/abs/proj", "--prompt", "hello"]);
   });
 
   it("adds repeatable --add-dir entries", () => {
@@ -52,6 +54,7 @@ describe("buildArgv", () => {
       "/abs/extra1",
       "--add-dir",
       "/abs/extra2",
+      "--prompt",
       "hello",
     ]);
   });
@@ -62,6 +65,7 @@ describe("buildArgv", () => {
       "--quiet",
       "-r",
       "c8c32f63-f8e7-434f-9776-83d2e09ab1ba",
+      "--prompt",
       "hello",
     ]);
   });
@@ -71,6 +75,7 @@ describe("buildArgv", () => {
       "--quiet",
       "--max-steps-per-turn",
       "5",
+      "--prompt",
       "hello",
     ]);
   });
@@ -80,6 +85,7 @@ describe("buildArgv", () => {
       "--quiet",
       "-m",
       "kimi-code/kimi-for-coding",
+      "--prompt",
       "hello",
     ]);
   });
@@ -88,11 +94,13 @@ describe("buildArgv", () => {
     expect(buildArgv(base({ thinking: true }))).toEqual([
       "--quiet",
       "--thinking",
+      "--prompt",
       "hello",
     ]);
     expect(buildArgv(base({ noThinking: true }))).toEqual([
       "--quiet",
       "--no-thinking",
+      "--prompt",
       "hello",
     ]);
   });
@@ -102,6 +110,7 @@ describe("buildArgv", () => {
       "--quiet",
       "--config-file",
       "/tmp/x.toml",
+      "--prompt",
       "hello",
     ]);
   });

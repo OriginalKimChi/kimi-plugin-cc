@@ -226,7 +226,7 @@ describe("runKimiSafe — caught errors", () => {
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) {
       expect(outcome.error.code).toBe("cli_not_found");
-      expect(outcome.error.details.argv_redacted).toEqual(["--quiet", "hello"]);
+      expect(outcome.error.details.argv_redacted).toEqual(["--quiet", "--prompt", "hello"]);
     }
   });
 
@@ -240,7 +240,7 @@ describe("runKimiSafe — caught errors", () => {
     expect(outcome.ok).toBe(false);
     if (!outcome.ok) {
       expect(outcome.error.code).toBe("cli_exit_nonzero");
-      expect(outcome.error.details.argv_redacted).toEqual(["--quiet", "hi"]);
+      expect(outcome.error.details.argv_redacted).toEqual(["--quiet", "--prompt", "hi"]);
     }
   });
 

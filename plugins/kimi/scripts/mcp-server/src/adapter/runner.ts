@@ -1,6 +1,6 @@
 import { buildArgv } from "./argv.js";
 import { parseStreamJsonStdout, type KimiStreamEvent } from "./parser-stream-json.js";
-import { parseTextStdout } from "./parser-text.js";
+import { extractSessionId, parseTextStdout } from "./parser-text.js";
 import {
   recheckPath,
   validatePath,
@@ -120,21 +120,26 @@ export async function runKimi(
 
   if (inv.outputFormat === "text") {
     const parsed = parseTextStdout(sub.stdout);
+    // kimi-cli 1.41 --quiet writes the trailing 'To resume this session: ...'
+    // marker to stderr (not stdout). Fall back to stderr if stdout's parser
+    // didn't find it.
+    const sessionId = parsed.sessionId ?? extractSessionId(sub.stderr);
     return {
       ...common,
-      sessionId: parsed.sessionId,
+      sessionId,
       finalMessage: redactSecrets(scrubControlChars(parsed.finalMessage), secrets),
-      trailingMarkerMissing: parsed.trailingMarkerMissing,
+      trailingMarkerMissing: sessionId === null,
     };
   }
 
   const parsed = parseStreamJsonStdout(sub.stdout);
+  const sessionId = parsed.sessionId ?? extractSessionId(sub.stderr);
   return {
     ...common,
-    sessionId: parsed.sessionId,
+    sessionId,
     finalMessage: redactSecrets(scrubControlChars(parsed.finalMessage), secrets),
     rawEvents: parsed.events,
-    trailingMarkerMissing: parsed.trailingMarkerMissing,
+    trailingMarkerMissing: sessionId === null,
   };
 }
 
