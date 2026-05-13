@@ -5,6 +5,66 @@ All notable changes to this plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-05-13
+
+### Added
+
+- **`kimi-companion` background runtime** — a single-file Node ESM script
+  (`scripts/kimi-companion.mjs`) that wraps `kimi` CLI invocations and adds a
+  detached-worker job model. Mirrors the `codex-companion` pattern so
+  `/kimi:rescue` can hand off long-running tasks without blocking the parent
+  Claude turn. State is persisted per-workspace under
+  `${CLAUDE_PLUGIN_DATA}/state/<slug>-<hash>/` (or `$TMPDIR/kimi-companion/...`
+  when the plugin data dir is unset). Each job has a JSON record + log file.
+  The companion exposes four subcommands:
+  - `task [--background] [--write|--read-only] [--resume <id>|--fresh] [--model <m>] [prompt]`
+    — runs `kimi --print --output-format text --quiet --prompt …` either
+    in-process (foreground) or via a `task-worker` child spawned with
+    `detached: true` + `unref()` so it survives the parent's exit.
+  - `status [job-id] [--all] [--json]` — list recent jobs or render a single
+    job's status / lifecycle timestamps / PID.
+  - `result <job-id|latest> [--json]` — print a finished job's `finalMessage`
+    (or `(no output captured yet)` while running).
+  - `cancel <job-id>` — SIGTERM the worker's process group, mark the job
+    `cancelled`. Already-finished jobs report state without re-killing.
+- **`/kimi:status`, `/kimi:result`, `/kimi:cancel` slash commands** — thin
+  Bash wrappers around the matching companion subcommands. Output is the
+  companion's stdout verbatim.
+- **Foreground/background heuristic in `kimi:kimi-rescue`** — the subagent
+  now picks foreground for small, bounded asks and `--background` for
+  open-ended / multi-step / long-running ones. Users can still force either
+  mode by passing the flag explicitly. Mirrors `codex-rescue`.
+
+### Changed
+
+- **`kimi:kimi-rescue` subagent** — rewritten from MCP forwarding
+  (`mcp__plugin_kimi_kimi__kimi_implement` / `kimi_query`) to a single
+  `Bash` call into `kimi-companion task`. `tools: Bash` replaces the MCP
+  tool list. Routing flags (`--read-only`, `--write`, `--background`,
+  `--resume`, `--fresh`, `--model`) are stripped from the task text before
+  forwarding. The MCP tools themselves are unchanged — direct callers
+  (including `kimi_implement`'s disposable-worktree flow) continue to work.
+- **`/kimi:rescue` slash command** — updated guidance to reflect the
+  companion-based forwarder and the new `/kimi:status` / `/kimi:result` /
+  `/kimi:cancel` follow-up commands.
+- **`PLUGIN_VERSION` synced** — `plugins/kimi/scripts/mcp-server/src/index.ts`
+  and the MCP server's `package.json` now match `plugin.json` (0.3.0). The
+  0.2.0 release left the in-source constant at 0.1.0; this bump corrects the
+  drift and `dist/index.cjs` was rebuilt to bake in the new version.
+
+### Known limitations
+
+- The companion runs `kimi` in the user's working directory; it does **not**
+  create a disposable git worktree the way `kimi_implement` does. Callers
+  that need worktree isolation should keep using the
+  `mcp__plugin_kimi_kimi__kimi_implement` MCP tool directly.
+- Foreground progress is surfaced as raw stderr tailed into the per-job log
+  file. There is no structured event stream yet; `--output-format stream-json`
+  is not used by the companion in this release.
+- `task` enforces soft caps of 600 s (foreground) / 1800 s (background) and
+  a hard ceiling of 7200 s. Jobs that hit the cap are marked `failed` with
+  `errorMessage="Timed out."`.
+
 ## [0.2.0] — 2026-05-13
 
 ### Added

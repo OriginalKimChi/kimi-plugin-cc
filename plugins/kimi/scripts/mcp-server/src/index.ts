@@ -11,7 +11,7 @@ import { runKimiResume } from "./tools/resume.js";
 import { runKimiReview } from "./tools/review.js";
 import { runStatusTool } from "./tools/status.js";
 
-const PLUGIN_VERSION = "0.1.0";
+const PLUGIN_VERSION = "0.3.0";
 
 const server = new Server(
   { name: "kimi", version: PLUGIN_VERSION },

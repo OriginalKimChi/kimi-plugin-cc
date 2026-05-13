@@ -19666,7 +19666,7 @@ function deriveState(auth, probe) {
 }
 
 // src/index.ts
-var PLUGIN_VERSION = "0.1.0";
+var PLUGIN_VERSION = "0.3.0";
 var server = new Server(
   { name: "kimi", version: PLUGIN_VERSION },
   { capabilities: { tools: {} } }
