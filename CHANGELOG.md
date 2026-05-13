@@ -5,6 +5,25 @@ All notable changes to this plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-05-13
+
+### Added
+
+- **`/kimi:setup` slash command** — probes whether the local `kimi` CLI is on
+  `PATH` and whether `~/.kimi/credentials/kimi-code.json` is populated. Guides
+  `uv tool install kimi-cli` when the CLI is missing (one `AskUserQuestion`
+  prompt, no auto-install otherwise) and surfaces `!kimi login` when the user
+  is unauthenticated. Mirrors the `/codex:setup` UX.
+- **`/kimi:rescue` slash command** — delegates a substantial coding,
+  investigation, or fix task to Kimi via the shared MCP runtime. Accepts
+  `--read-only` (routes to `kimi_query`) and `--write` (routes to
+  `kimi_implement`, the default). Forwards the raw user request verbatim and
+  returns Kimi's response verbatim.
+- **`kimi:kimi-rescue` subagent** — thin forwarder used by `/kimi:rescue`.
+  Strips routing flags, calls exactly one MCP tool, returns the result as-is.
+  Falls back to a single line pointing at `/kimi:setup` if Kimi is missing or
+  unauthenticated.
+
 ## [0.1.0] — 2026-05-11
 
 First release with a working tool surface and a hardened adapter. Integration-
