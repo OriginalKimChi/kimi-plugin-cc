@@ -114,6 +114,7 @@ export async function runKimiImplement(
     pluginVersion: ctx.pluginVersion,
     binary: ctx.binary,
     pathConstraints: ctx.pathConstraints,
+    tool: "kimi_implement",
     _runSubprocess: ctx._runSubprocess,
   };
 

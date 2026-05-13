@@ -62,6 +62,7 @@ export async function runKimiQuery(
     pluginVersion: ctx.pluginVersion,
     binary: ctx.binary,
     pathConstraints: ctx.pathConstraints,
+    tool: "kimi_query",
     _runSubprocess: ctx._runSubprocess,
   };
 

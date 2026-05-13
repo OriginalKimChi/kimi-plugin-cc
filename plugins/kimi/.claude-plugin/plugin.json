@@ -1,7 +1,7 @@
 {
   "name": "kimi",
   "version": "0.3.0",
-  "description": "Unofficial Claude Code plugin that exposes the Kimi (Moonshot) coding model as MCP tools.",
+  "description": "Unofficial Claude Code plugin that exposes the Kimi (Moonshot) coding model as MCP tools, slash commands, and an optional stop-time review gate.",
   "author": { "name": "OriginalKimChi" },
   "license": "MIT",
   "homepage": "https://github.com/OriginalKimChi/kimi-plugin-cc",

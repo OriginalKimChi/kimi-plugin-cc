@@ -62,6 +62,7 @@ export async function runKimiResume(
     pluginVersion: ctx.pluginVersion,
     binary: ctx.binary,
     pathConstraints: ctx.pathConstraints,
+    tool: "kimi_resume",
     _runSubprocess: ctx._runSubprocess,
   };
 
