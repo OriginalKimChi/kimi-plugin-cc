@@ -9,6 +9,13 @@ import {
 } from "./path-validator.js";
 import { buildSubprocessEnv, redactSecrets, scrubControlChars } from "./security.js";
 import {
+  isValidSessionId,
+  writeSidecar,
+  SIDECAR_SCHEMA_VERSION,
+  type SidecarPhase,
+  type SidecarTool,
+} from "./state-sidecar.js";
+import {
   runSubprocess,
   type KilledBy,
   type SubprocessOptions,
@@ -36,6 +43,10 @@ export interface RunKimiContext {
   pluginVersion: string;
   binary?: string;
   pathConstraints?: PathConstraints;
+  /** When set, writeSidecar is called after the run with this tool name. Tools
+   *  layer (kimi_query/etc.) passes its own name through. Omit to skip sidecar
+   *  writing entirely — used by unit tests that don't want filesystem side effects. */
+  tool?: SidecarTool;
   _runSubprocess?: (opts: SubprocessOptions) => Promise<SubprocessResult>;
   /** Test seam: fires between validate and recheck so TOCTOU can be simulated. */
   _afterValidate?: () => void | Promise<void>;
@@ -119,33 +130,75 @@ export async function runKimi(
     killedBy: sub.killedBy,
   };
 
+  let result: KimiResult;
   if (inv.outputFormat === "text") {
     const parsed = parseTextStdout(sub.stdout);
     const sessionId = parsed.sessionId ?? extractSessionId(sub.stderr);
     const trailingMarkerMissing = sessionId === null;
     if (trailingMarkerMissing) recordDriftEvent("missing_trailing_marker");
-    return {
+    result = {
       ...common,
       sessionId,
       finalMessage: redactSecrets(scrubControlChars(parsed.finalMessage), secrets),
       trailingMarkerMissing,
     };
+  } else {
+    const parsed = parseStreamJsonStdout(sub.stdout);
+    const sessionId = parsed.sessionId ?? extractSessionId(sub.stderr);
+    const trailingMarkerMissing = sessionId === null;
+    if (parsed.events.length === 0 && sub.exitCode === 0) {
+      recordDriftEvent("stream_json_malformed");
+    }
+    if (trailingMarkerMissing) recordDriftEvent("missing_trailing_marker");
+    result = {
+      ...common,
+      sessionId,
+      finalMessage: redactSecrets(scrubControlChars(parsed.finalMessage), secrets),
+      rawEvents: parsed.events,
+      trailingMarkerMissing,
+    };
   }
 
-  const parsed = parseStreamJsonStdout(sub.stdout);
-  const sessionId = parsed.sessionId ?? extractSessionId(sub.stderr);
-  const trailingMarkerMissing = sessionId === null;
-  if (parsed.events.length === 0 && sub.exitCode === 0) {
-    recordDriftEvent("stream_json_malformed");
+  recordSidecar(inv, ctx, result);
+  return result;
+}
+
+function recordSidecar(
+  inv: RunKimiInvocation,
+  ctx: RunKimiContext,
+  result: KimiResult,
+): void {
+  if (!ctx.tool) return;
+  if (!isValidSessionId(result.sessionId)) return;
+  const cwd = inv.cwd ?? inv.workDir ?? process.cwd();
+  const finishedAt = new Date();
+  const startedAt = new Date(finishedAt.getTime() - result.durationMs);
+  const phase: SidecarPhase =
+    result.killedBy !== "completed"
+      ? "cancelled"
+      : result.exitCode === 0
+        ? "completed"
+        : "failed";
+  try {
+    writeSidecar({
+      schema_version: SIDECAR_SCHEMA_VERSION,
+      session_id: result.sessionId as string,
+      tool: ctx.tool,
+      source: "mcp",
+      job_id: null,
+      cwd,
+      phase,
+      started_at: startedAt.toISOString(),
+      finished_at: finishedAt.toISOString(),
+      exit_code: result.exitCode,
+      duration_ms: result.durationMs,
+      killed_by: result.killedBy === "completed" ? null : result.killedBy,
+      trailing_marker_missing: result.trailingMarkerMissing,
+      plugin_version: ctx.pluginVersion,
+    });
+  } catch {
+    // best-effort: sidecar write must never fail the run
   }
-  if (trailingMarkerMissing) recordDriftEvent("missing_trailing_marker");
-  return {
-    ...common,
-    sessionId,
-    finalMessage: redactSecrets(scrubControlChars(parsed.finalMessage), secrets),
-    rawEvents: parsed.events,
-    trailingMarkerMissing,
-  };
 }
 
 function collectSecrets(env: NodeJS.ProcessEnv): string[] {

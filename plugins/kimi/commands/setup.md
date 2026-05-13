@@ -1,8 +1,18 @@
 ---
-description: Check whether the local Kimi CLI is installed and authenticated
-argument-hint: ''
-allowed-tools: Bash(command:*), Bash(kimi:*), Bash(test:*), Bash(stat:*), AskUserQuestion
+description: Check whether the local Kimi CLI is installed and authenticated, and optionally toggle the stop-time review gate
+argument-hint: '[--enable-review-gate|--disable-review-gate]'
+allowed-tools: Bash(command:*), Bash(kimi:*), Bash(test:*), Bash(stat:*), Bash(node:*), AskUserQuestion
 ---
+
+If `$ARGUMENTS` contains `--enable-review-gate` or `--disable-review-gate`, FIRST run:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/scripts/kimi-companion.mjs" config $ARGUMENTS
+```
+
+Print the resulting `stopReviewGate: enabled|disabled` line verbatim and stop here. The user invoked `/kimi:setup` only to flip the gate.
+
+Otherwise (no toggle flag), proceed to the install/auth probe below.
 
 Run the following probe and report the result to the user.
 

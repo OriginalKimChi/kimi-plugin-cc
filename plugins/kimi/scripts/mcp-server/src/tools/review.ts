@@ -62,6 +62,7 @@ export async function runKimiReview(
     pluginVersion: ctx.pluginVersion,
     binary: ctx.binary,
     pathConstraints: ctx.pathConstraints,
+    tool: "kimi_review",
     _runSubprocess: ctx._runSubprocess,
   };
 

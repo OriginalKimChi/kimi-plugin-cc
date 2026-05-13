@@ -62,6 +62,7 @@ export async function runKimiAnalyze(
     pluginVersion: ctx.pluginVersion,
     binary: ctx.binary,
     pathConstraints: ctx.pathConstraints,
+    tool: "kimi_analyze",
     _runSubprocess: ctx._runSubprocess,
   };
 

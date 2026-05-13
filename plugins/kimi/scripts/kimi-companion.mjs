@@ -12,10 +12,19 @@ const ROOT_DIR = path.resolve(fileURLToPath(new URL(".", import.meta.url)));
 const SCRIPT_PATH = path.join(ROOT_DIR, "kimi-companion.mjs");
 
 const PLUGIN_DATA_ENV = "CLAUDE_PLUGIN_DATA";
+const STATE_DIR_ENV = "KIMI_STATE_DIR";
 const FALLBACK_STATE_ROOT = path.join(os.tmpdir(), "kimi-companion");
 const STATE_FILE_NAME = "state.json";
 const JOBS_DIR_NAME = "jobs";
+const SESSIONS_DIR_NAME = "sessions";
+const SIDECAR_SCHEMA_VERSION = 1;
+const SIDECAR_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const SIDECAR_MAX_FILES = 200;
+const SESSION_ID_RE = /^[a-zA-Z0-9_-]{8,128}$/;
+const PLUGIN_VERSION = "0.3.0";
 const MAX_JOBS = 50;
+const SESSION_LINE_RE =
+  /^[ \t]*To resume this session: kimi -r ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[ \t\r]*$/gm;
 const STDOUT_CAP_BYTES = 4 * 1024 * 1024;
 const STDERR_CAP_BYTES = 1 * 1024 * 1024;
 const FOREGROUND_DEFAULT_TIMEOUT_SECONDS = 600;
@@ -41,6 +50,7 @@ function printUsage() {
       "  node scripts/kimi-companion.mjs status [job-id] [--cwd <dir>] [--all] [--json]",
       "  node scripts/kimi-companion.mjs result <job-id|latest> [--cwd <dir>] [--json]",
       "  node scripts/kimi-companion.mjs cancel <job-id> [--cwd <dir>] [--json]",
+      "  node scripts/kimi-companion.mjs config [show] [--enable-review-gate|--disable-review-gate] [--cwd <dir>] [--json]",
       "",
     ].join("\n"),
   );
@@ -117,9 +127,75 @@ function resolveStateDir(cwd) {
   const slug =
     slugSrc.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "workspace";
   const hash = createHash("sha256").update(canonical).digest("hex").slice(0, 16);
+  const forced = process.env[STATE_DIR_ENV];
   const dataDir = process.env[PLUGIN_DATA_ENV];
-  const root = dataDir ? path.join(dataDir, "state") : FALLBACK_STATE_ROOT;
+  let root;
+  if (forced && forced.length > 0) root = forced;
+  else if (dataDir && dataDir.length > 0) root = path.join(dataDir, "state");
+  else root = FALLBACK_STATE_ROOT;
   return path.join(root, `${slug}-${hash}`);
+}
+
+function sessionsDir(cwd) {
+  return path.join(resolveStateDir(cwd), SESSIONS_DIR_NAME);
+}
+
+function extractSessionIdFromText(text) {
+  if (!text) return null;
+  SESSION_LINE_RE.lastIndex = 0;
+  let last = null;
+  let m;
+  while ((m = SESSION_LINE_RE.exec(text)) !== null) last = m;
+  return last ? last[1] ?? null : null;
+}
+
+function isValidSessionId(id) {
+  return typeof id === "string" && SESSION_ID_RE.test(id);
+}
+
+function writeSessionSidecar(payload) {
+  if (!isValidSessionId(payload.session_id)) return;
+  const dir = sessionsDir(payload.cwd);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const finalPath = path.join(dir, `${payload.session_id}.json`);
+    const tmpPath = `${finalPath}.tmp`;
+    fs.writeFileSync(tmpPath, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    fs.renameSync(tmpPath, finalPath);
+    gcSidecars(dir);
+  } catch {
+    // best-effort
+  }
+}
+
+function gcSidecars(dir) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return;
+  }
+  const records = [];
+  for (const name of entries) {
+    if (!name.endsWith(".json")) continue;
+    const file = path.join(dir, name);
+    try {
+      const st = fs.statSync(file);
+      records.push({ file, mtimeMs: st.mtimeMs });
+    } catch {
+      // skip
+    }
+  }
+  const cutoff = Date.now() - SIDECAR_TTL_MS;
+  const survivors = [];
+  for (const r of records) {
+    if (r.mtimeMs < cutoff) safeUnlink(r.file);
+    else survivors.push(r);
+  }
+  if (survivors.length > SIDECAR_MAX_FILES) {
+    survivors.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    for (const dead of survivors.slice(SIDECAR_MAX_FILES)) safeUnlink(dead.file);
+  }
 }
 
 function jobsDir(cwd) {
@@ -150,12 +226,15 @@ function nowIso() {
 
 function loadState(cwd) {
   const f = stateFile(cwd);
-  if (!fs.existsSync(f)) return { jobs: [] };
+  if (!fs.existsSync(f)) return { jobs: [], config: {} };
   try {
     const parsed = JSON.parse(fs.readFileSync(f, "utf8"));
-    return { jobs: Array.isArray(parsed.jobs) ? parsed.jobs : [] };
+    return {
+      jobs: Array.isArray(parsed.jobs) ? parsed.jobs : [],
+      config: isPlainObject(parsed.config) ? parsed.config : {},
+    };
   } catch {
-    return { jobs: [] };
+    return { jobs: [], config: {} };
   }
 }
 
@@ -172,7 +251,27 @@ function saveState(cwd, state) {
     safeUnlink(jobJsonPath(cwd, j.id));
     safeUnlink(jobLogPath(cwd, j.id));
   }
-  fs.writeFileSync(stateFile(cwd), `${JSON.stringify({ jobs: nextJobs }, null, 2)}\n`, "utf8");
+  const nextConfig = isPlainObject(state.config) ? state.config : {};
+  fs.writeFileSync(
+    stateFile(cwd),
+    `${JSON.stringify({ jobs: nextJobs, config: nextConfig }, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+function isPlainObject(v) {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function getConfig(cwd) {
+  return loadState(cwd).config ?? {};
+}
+
+function setConfig(cwd, patch) {
+  const state = loadState(cwd);
+  const next = { ...(state.config ?? {}), ...patch };
+  saveState(cwd, { ...state, config: next });
+  return next;
 }
 
 function safeUnlink(p) {
@@ -568,6 +667,30 @@ function finalizeJob(cwd, id, result) {
   };
   writeJobJson(cwd, id, next);
   upsertJob(cwd, { id, status, pid: null, completedAt, errorMessage });
+
+  const sessionId =
+    extractSessionIdFromText(result.stdout) ?? extractSessionIdFromText(result.stderr);
+  if (sessionId) {
+    const startedAt = stored.createdAt ?? completedAt;
+    const sidecarPhase =
+      status === "completed" ? "completed" : status === "cancelled" ? "cancelled" : "failed";
+    writeSessionSidecar({
+      schema_version: SIDECAR_SCHEMA_VERSION,
+      session_id: sessionId,
+      tool: "kimi_query",
+      source: "companion",
+      job_id: id,
+      cwd,
+      phase: sidecarPhase,
+      started_at: startedAt,
+      finished_at: completedAt,
+      exit_code: result.exitCode ?? null,
+      duration_ms: result.durationMs ?? null,
+      killed_by: result.killReason ?? null,
+      trailing_marker_missing: false,
+      plugin_version: PLUGIN_VERSION,
+    });
+  }
 }
 
 function tail(text, bytes) {
@@ -673,6 +796,34 @@ function cmdCancel(rawArgs) {
   );
 }
 
+function cmdConfig(rawArgs) {
+  const { options, positionals } = parseArgs(rawArgs, {
+    booleans: ["json", "enable-review-gate", "disable-review-gate"],
+    values: ["cwd"],
+  });
+  const cwd = path.resolve(options.cwd ?? process.cwd());
+
+  if (options["enable-review-gate"] && options["disable-review-gate"]) {
+    throw new Error("Cannot combine --enable-review-gate and --disable-review-gate.");
+  }
+  if (options["enable-review-gate"]) {
+    setConfig(cwd, { stopReviewGate: true });
+  } else if (options["disable-review-gate"]) {
+    setConfig(cwd, { stopReviewGate: false });
+  } else if (positionals[0] === "show" || positionals.length === 0) {
+    // fall through to print
+  } else {
+    throw new Error(`Unknown config args: ${positionals.join(" ")}`);
+  }
+
+  const cfg = getConfig(cwd);
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(cfg, null, 2)}\n`);
+    return;
+  }
+  process.stdout.write(`stopReviewGate: ${cfg.stopReviewGate ? "enabled" : "disabled"}\n`);
+}
+
 // --- entry ------------------------------------------------------------------
 
 async function main() {
@@ -696,6 +847,9 @@ async function main() {
       return;
     case "cancel":
       cmdCancel(rest);
+      return;
+    case "config":
+      cmdConfig(rest);
       return;
     default:
       printUsage();

@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/OriginalKimChi/kimi-plugin-cc/schemas/review-output.schema.json",
+  "title": "Kimi review output (findings_v1)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "verdict", "summary", "findings", "next_steps"],
+  "properties": {
+    "schema_version": {
+      "const": "findings_v1"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["approve", "needs-attention"]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "findings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "next_steps": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000
+      }
+    },
+    "attack_round": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2,
+      "description": "1 = first reviewer; 2 = adversarial follow-up that critiques round 1."
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "severity", "title", "body", "file", "line_start", "line_end", "confidence"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^f-[a-z0-9]{4,16}$",
+          "description": "Stable id within this review output, used by attack_round=2 to reference round-1 findings."
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["critical", "high", "medium", "low"]
+        },
+        "category": {
+          "type": "string",
+          "enum": ["correctness", "security", "performance", "maintainability", "style", "other"]
+        },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "body": { "type": "string", "minLength": 1, "maxLength": 8000 },
+        "file": { "type": "string", "minLength": 1 },
+        "line_start": { "type": "integer", "minimum": 1 },
+        "line_end": { "type": "integer", "minimum": 1 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "recommendation": { "type": "string", "maxLength": 4000 },
+        "responding_to": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^f-[a-z0-9]{4,16}$" },
+          "description": "Only valid in attack_round=2. IDs of round-1 findings this finding rebuts, qualifies, or expands."
+        },
+        "stance": {
+          "type": "string",
+          "enum": ["rebut", "expand", "missed", "exaggerated", "confirm"],
+          "description": "Only valid in attack_round=2. How this finding relates to round 1."
+        }
+      }
+    }
+  }
+}
